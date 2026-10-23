@@ -27,16 +27,14 @@ struct CompactLayout: View {
             }
 
             Tab("Search", systemImage: "magnifyingglass", value: TabID.search, role: .search) {
-                NavigationStack {
-                    SearchView()
-                }
+                SearchStack()
             }
         }
         .onAppear {
             // Carry over what was beside the queue when unfolded; an open job wins.
             if store.selectedJobID != nil {
                 tab = .queue
-            } else if store.secondaryPane == .search, !store.search.query.isEmpty {
+            } else if store.secondaryPane == .search {
                 tab = .search
             }
         }

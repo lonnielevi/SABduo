@@ -14,38 +14,60 @@ struct SplitLayout: View {
 
             Divider().ignoresSafeArea()
 
-            NavigationStack {
+            Group {
                 if let id = store.selectedJobID {
-                    JobDetailView(jobID: id)
-                        .toolbar {
-                            ToolbarItem(placement: .topBarLeading) {
-                                Button(store.secondaryPane == .search ? "Search" : "History",
-                                       systemImage: store.secondaryPane == .search ? "magnifyingglass" : "clock") {
-                                    store.selectedJobID = nil
+                    NavigationStack {
+                        JobDetailView(jobID: id)
+                            .toolbar {
+                                ToolbarItem(placement: .topBarLeading) {
+                                    Button(store.secondaryPane == .search ? "Search" : "History",
+                                           systemImage: store.secondaryPane == .search ? "magnifyingglass" : "clock") {
+                                        store.selectedJobID = nil
+                                    }
                                 }
                             }
-                        }
-                        .id(id)
-                } else {
-                    Group {
-                        switch store.secondaryPane {
-                        case .history: HistoryView()
-                        case .search: SearchView()
-                        }
+                            .id(id)
                     }
-                    .toolbar {
-                        ToolbarItem(placement: .principal) {
-                            Picker("Pane", selection: Bindable(store).secondaryPane) {
-                                Text("History").tag(SecondaryPane.history)
-                                Text("Search").tag(SecondaryPane.search)
-                            }
-                            .pickerStyle(.segmented)
-                            .fixedSize()
+                } else {
+                    switch store.secondaryPane {
+                    case .history:
+                        NavigationStack {
+                            HistoryView().secondaryPanePicker(true)
                         }
+                    case .search:
+                        SearchStack(showsPanePicker: true)
                     }
                 }
             }
             .frame(maxWidth: .infinity)
         }
+    }
+}
+
+/// History/Search switcher for the root of the trailing pane. It stands in for the title:
+/// a large title there sits flush against the divider.
+private struct SecondaryPanePicker: ViewModifier {
+    @Environment(AppStore.self) private var store
+
+    func body(content: Content) -> some View {
+        content
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+            ToolbarItem(placement: .principal) {
+                Picker("Pane", selection: Bindable(store).secondaryPane) {
+                    Text("History").tag(SecondaryPane.history)
+                    Text("Search").tag(SecondaryPane.search)
+                }
+                .pickerStyle(.segmented)
+                .fixedSize()
+            }
+        }
+    }
+}
+
+extension View {
+    @ViewBuilder
+    func secondaryPanePicker(_ enabled: Bool) -> some View {
+        if enabled { modifier(SecondaryPanePicker()) } else { self }
     }
 }

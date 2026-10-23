@@ -32,7 +32,7 @@ final class AppStore {
         let savedIndexers = Indexer.loadAll()
         indexers = savedIndexers
         indexerKeys = Dictionary(uniqueKeysWithValues: savedIndexers.map { ($0.id, Keychain.string(for: $0.keychainAccount) ?? "") })
-        search.indexerID = savedIndexers.first?.id
+        search.selectIndexer(savedIndexers.first?.id)
         #if DEBUG
         // Point a simulator run at a server without typing it in:
         // SIMCTL_CHILD_SABDUO_HOST=127.0.0.1 SIMCTL_CHILD_SABDUO_API_KEY=… xcrun simctl launch …
@@ -48,6 +48,7 @@ final class AppStore {
             indexer.name = env["SABDUO_INDEXER_NAME"] ?? indexer.name
             saveIndexer(indexer, apiKey: key)
         }
+        if env["SABDUO_PANE"] == "search" { secondaryPane = .search }
         #endif
     }
 
@@ -92,22 +93,20 @@ final class AppStore {
         indexerKeys[indexer.id] = key
         Keychain.set(key, for: indexer.keychainAccount)
         Indexer.saveAll(indexers)
-        if search.indexerID == nil || search.indexerID == indexer.id {
-            search.indexerID = indexer.id
-            search.reset()
-        }
+        search.invalidate(indexer.id)
+        if search.indexerID == nil { search.selectIndexer(indexer.id) }
     }
 
     func deleteIndexers(at offsets: IndexSet) {
         for indexer in offsets.map({ indexers[$0] }) {
             Keychain.set(nil, for: indexer.keychainAccount)
             indexerKeys[indexer.id] = nil
+            search.invalidate(indexer.id)
         }
         indexers.remove(atOffsets: offsets)
         Indexer.saveAll(indexers)
         if !indexers.contains(where: { $0.id == search.indexerID }) {
-            search.indexerID = indexers.first?.id
-            search.reset()
+            search.selectIndexer(indexers.first?.id)
         }
     }
 
