@@ -22,6 +22,7 @@ struct SearchStack<Header: View>: View {
                         .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.trailing } action: { pageInset = $0 }
                 }
                 .toolbar { SearchButtons() }
+                .modifier(SearchPaneBackground())
                 .navigationDestination(for: SearchRoute.self) { route in
                     Group {
                         switch route {
@@ -31,6 +32,7 @@ struct SearchStack<Header: View>: View {
                         }
                     }
                     .toolbar { SearchButtons() }
+                    .modifier(SearchPaneBackground())
                 }
         }
         // Room for the end of a list to scroll clear of the floating field.
@@ -49,6 +51,22 @@ struct SearchStack<Header: View>: View {
             SearchView()
         } else {
             SearchView().safeAreaBar(edge: .top) { header }
+        }
+    }
+}
+
+/// Unfolded, each search page takes the pane's own background, so it stands apart from the list
+/// pane beside it.
+private struct SearchPaneBackground: ViewModifier {
+    @Environment(\.isUnfolded) private var isUnfolded
+
+    func body(content: Content) -> some View {
+        if isUnfolded {
+            content
+                .scrollContentBackground(.hidden)
+                .containerBackground(Color.searchPane, for: .navigation)
+        } else {
+            content
         }
     }
 }

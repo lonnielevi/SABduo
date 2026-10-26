@@ -41,12 +41,14 @@ struct QueueView: View {
         .overlay {
             if store.isConfigured, store.queue != nil, store.slots.isEmpty {
                 ContentUnavailableView("Queue Empty", systemImage: "tray", description: Text("Add an NZB from Search, Files, or the Share Sheet."))
+                    .emptyStatePlacement()
             } else if !store.isConfigured {
                 ContentUnavailableView {
                     Label("No Server", systemImage: "server.rack")
                 } actions: {
                     Button("Set Up Server", action: actions.showSettings)
                 }
+                .emptyStatePlacement()
             }
         }
         .environment(\.editMode, Binding(

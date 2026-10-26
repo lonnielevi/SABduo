@@ -17,17 +17,39 @@ struct IndexerEditView: View {
     }
 
     var body: some View {
+        let preset = Indexer.presets.first { $0.address == indexer.address }
         Form {
             Section {
-                TextField("Name", text: $indexer.name, prompt: Text("NZB.life"))
-                TextField("Address", text: $indexer.address, prompt: Text("https://api.nzb.life/api"))
+                // Adding one: pick a known indexer to fill in its address, or Custom to type one.
+                if !store.indexers.contains(where: { $0.id == indexer.id }) {
+                    Picker("Indexer", selection: Binding(
+                        get: { preset?.address ?? "" },
+                        set: { address in
+                            let picked = Indexer.presets.first { $0.address == address }
+                            indexer.name = picked?.name ?? ""
+                            indexer.address = picked?.address ?? ""
+                            testState = .idle
+                        }
+                    )) {
+                        Text("Custom").tag("")
+                        ForEach(Indexer.presets, id: \.address) { Text($0.name).tag($0.address) }
+                    }
+                    .pickerStyle(.navigationLink)
+                }
+                TextField("Name", text: $indexer.name, prompt: Text("Nickname"))
+                // Filled in for a known indexer; changing it makes it a custom one.
+                TextField("Address", text: $indexer.address, prompt: Text("https://indexer.example/api"))
                     .keyboardType(.URL)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
             } header: {
                 Text("Indexer")
             } footer: {
-                if let url = indexer.apiURL { Text(url.absoluteString) }
+                // The address in full, when what's typed leaves out the scheme or "/api".
+                if let url = indexer.apiURL?.absoluteString,
+                   url != indexer.address.trimmingCharacters(in: .whitespacesAndNewlines) {
+                    Text(url)
+                }
             }
 
             Section {

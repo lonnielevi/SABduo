@@ -37,6 +37,7 @@ struct HistoryView: View {
         .overlay {
             if store.isConfigured, store.queue != nil, store.history.isEmpty {
                 ContentUnavailableView("No History", systemImage: "clock")
+                    .emptyStatePlacement()
             }
         }
         .refreshable { await store.refresh() }

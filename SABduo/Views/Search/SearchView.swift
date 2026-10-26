@@ -106,10 +106,18 @@ struct SearchView: View {
                 ContentUnavailableView {
                     Label("No Indexer", systemImage: "magnifyingglass")
                 } description: {
-                    Text("Add a Newznab indexer such as NZB.life with its API key.")
+                    Text("Add a Newznab indexer and its API key to search for releases.")
                 } actions: {
-                    Button("Add Indexer", action: actions.showSettings)
+                    VStack(spacing: 20) {
+                        Button("Add Indexer", action: actions.showSettings)
+                        // Search is optional: without an indexer, the app is a SABnzbd remote.
+                        if store.indexers.isEmpty {
+                            Button("Hide Search") { withAnimation { store.hidesSearch = true } }
+                                .font(.subheadline)
+                        }
+                    }
                 }
+                .emptyStatePlacement()
             } else if feed.hasLoaded || feed.isLoading {
                 FeedStatus(feed: feed, name: indexer?.name ?? "the indexer")
             }

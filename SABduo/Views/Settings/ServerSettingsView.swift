@@ -213,11 +213,16 @@ struct ServerSettingsView: View {
             }
             .onDelete { store.deleteIndexers(at: $0) }
             NavigationLink {
-                IndexerEditView(indexer: store.indexers.contains { $0.address == Indexer.nzbLife.address }
-                    ? Indexer(name: "", address: "")
-                    : Indexer.nzbLife)
+                IndexerEditView(indexer: Indexer(name: "", address: ""))
             } label: {
                 Label("Add Indexer", systemImage: "plus")
+            }
+            // Search hides itself only while there's nothing to search; adding an indexer shows it.
+            if store.indexers.isEmpty {
+                Toggle("Show Search", isOn: Binding(
+                    get: { !store.hidesSearch },
+                    set: { shown in withAnimation { store.hidesSearch = !shown } }
+                ))
             }
         } header: {
             Text("Search")

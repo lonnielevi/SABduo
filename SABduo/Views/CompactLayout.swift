@@ -32,8 +32,10 @@ struct CompactLayout: View {
                         .topPage(header)
                 }
             }
-            Tab(Page.search.title, systemImage: Page.search.systemImage, value: .search, role: .search) {
-                SearchStack { header }
+            if store.showsSearch {
+                Tab(Page.search.title, systemImage: Page.search.systemImage, value: .search, role: .search) {
+                    SearchStack { header }
+                }
             }
         }
         // The cover display keeps a side rail, beside the status bar.
@@ -43,7 +45,7 @@ struct CompactLayout: View {
             // then whichever page the leading side was showing.
             if store.selectedJobID != nil {
                 page = .queue
-            } else if !store.search.path.isEmpty || store.search.homeFeed.hasLoaded {
+            } else if store.showsSearch, !store.search.path.isEmpty || store.search.homeFeed.hasLoaded {
                 page = .search
             } else {
                 page = Page(store.listPane)
@@ -51,6 +53,8 @@ struct CompactLayout: View {
         }
         // Buttons elsewhere that open Settings: setting up a server, adding an indexer.
         .onChange(of: store.settingsRequests) { show(.settings) }
+        // Hiding search leaves its tab; land on the queue.
+        .onChange(of: store.showsSearch) { if !store.showsSearch, page == .search { show(.queue) } }
     }
 
     /// The download stats, heading each page in a bar inside its navigation, so lists scroll

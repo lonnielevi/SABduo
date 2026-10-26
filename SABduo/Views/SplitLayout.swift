@@ -1,6 +1,7 @@
 import SwiftUI
 
 /// Unfolded: queue or history on the leading half; search, or the selected job, on the trailing half.
+/// With search hidden, the trailing half is only for the selected job.
 /// In portrait, and in book mode, the halves split the screen, putting the divider on the fold; the
 /// side rail takes its room from the pane beside it. Otherwise in landscape they split the room
 /// beside the rail, so the panes are the same usable width.
@@ -13,7 +14,7 @@ struct SplitLayout: View {
     @State private var sideInsets = EdgeInsets()
     var body: some View {
         // A selected job always shows beside the list it came from.
-        let searchFills = store.searchFullScreen && store.selectedJobID == nil
+        let searchFills = store.searchFullScreen && store.selectedJobID == nil && store.showsSearch
         GeometryReader { proxy in
             // The interface orientation, not the layout's shape: the keyboard shortens the layout,
             // and in portrait that can leave it wider than tall. Read whenever the size changes,
@@ -124,8 +125,6 @@ struct SplitLayout: View {
         }
         // The page's buttons, above the tab bar like Music's player.
         .tabViewBottomAccessory { ListsAccessory() }
-        // Scrolling down shrinks the tab bar to a pill and brings the buttons in beside it.
-        .tabBarMinimizeBehavior(.onScrollDown)
         // The pane is iPhone-wide; a regular width would put the tabs at the top, iPad-style.
         .environment(\.horizontalSizeClass, .compact)
     }
@@ -151,7 +150,16 @@ struct SplitLayout: View {
     private var pageSelection: Binding<Page> {
         Binding(
             get: { Page(store.listPane) },
-            set: { page in withAnimation(.snappy) { store.listPane = page.listPane ?? .queue } }
+            set: { page in
+                let pane = page.listPane ?? .queue
+                // In landscape the page's buttons join the side rail, where an animation would slide
+                // them in from off the screen; the tab view swaps the page itself without one.
+                if UIApplication.interfaceIsLandscape {
+                    store.listPane = pane
+                } else {
+                    withAnimation(.snappy) { store.listPane = pane }
+                }
+            }
         )
     }
 
@@ -169,16 +177,30 @@ struct SplitLayout: View {
                     JobDetailView(jobID: id)
                         .toolbar {
                             ToolbarItem(placement: .topBarLeading) {
-                                Button("Search", systemImage: "magnifyingglass") {
-                                    store.selectedJobID = nil
+                                if store.showsSearch {
+                                    Button("Search", systemImage: "magnifyingglass") {
+                                        store.selectedJobID = nil
+                                    }
+                                } else {
+                                    Button("Close", systemImage: "xmark") {
+                                        store.selectedJobID = nil
+                                    }
                                 }
                             }
                             ListsRailItems()
                         }
                         .id(id)
                 }
-            } else {
+            } else if store.showsSearch {
                 SearchStack()
+            } else {
+                // With search hidden, this half is for a job's details.
+                NavigationStack {
+                    ContentUnavailableView("No Job Selected", systemImage: "tray",
+                                           description: Text("Select a job in the queue to see its details."))
+                        .emptyStatePlacement()
+                        .toolbar { ListsRailItems() }
+                }
             }
         }
     }

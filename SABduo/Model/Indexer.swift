@@ -7,7 +7,27 @@ nonisolated struct Indexer: Codable, Identifiable, Hashable, Sendable {
     /// What the user typed, e.g. "nzb.life" or "https://api.nzb.life/api".
     var address: String
 
-    static let nzbLife = Indexer(name: "NZB.life", address: "https://api.nzb.life/api")
+    /// Well-known Newznab indexers to pick from when adding one, with their API addresses as
+    /// Prowlarr lists them.
+    static let presets: [Indexer] = [
+        Indexer(name: "abNZB", address: "https://abnzb.com/api"),
+        Indexer(name: "altHUB", address: "https://api.althub.co.za/api"),
+        Indexer(name: "AnimeTosho", address: "https://feed.animetosho.org/api"),
+        Indexer(name: "DOGnzb", address: "https://api.dognzb.cr/api"),
+        Indexer(name: "DrunkenSlug", address: "https://drunkenslug.com/api"),
+        Indexer(name: "GingaDADDY", address: "https://www.gingadaddy.com/api"),
+        Indexer(name: "Miatrix", address: "https://www.miatrix.com/api"),
+        Indexer(name: "NinjaCentral", address: "https://ninjacentral.co.za/api"),
+        Indexer(name: "NZB.life", address: "https://api.nzb.life/api"),
+        Indexer(name: "NZBCat", address: "https://nzb.cat/api"),
+        Indexer(name: "NZBFinder", address: "https://nzbfinder.ws/api"),
+        Indexer(name: "NZBgeek", address: "https://api.nzbgeek.info/api"),
+        Indexer(name: "NZBNDX", address: "https://www.nzbndx.com/api"),
+        Indexer(name: "NzbNoob", address: "https://www.nzbnoob.com/api"),
+        Indexer(name: "NzbPlanet", address: "https://api.nzbplanet.net/api"),
+        Indexer(name: "NZBStars", address: "https://nzbstars.com/api"),
+        Indexer(name: "Tabula Rasa", address: "https://www.tabula-rasa.pw/api/v1/api"),
+    ]
 
     var keychainAccount: String { "indexer.\(id.uuidString)" }
 

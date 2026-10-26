@@ -10,6 +10,7 @@ struct JobDetailView: View {
             content(job)
         } else {
             ContentUnavailableView("Job Finished or Removed", systemImage: "checkmark.circle", description: Text("It's no longer in the queue. Check History."))
+                .emptyStatePlacement()
         }
     }
 

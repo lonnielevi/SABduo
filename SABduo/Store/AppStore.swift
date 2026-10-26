@@ -27,6 +27,13 @@ final class AppStore {
     private(set) var listPaneMovedForward = true
     /// Unfolded, search can take the whole screen; the split comes back when this is cleared.
     var searchFullScreen = false
+    /// Chosen from search's "No Indexer" screen, for using the app without an indexer.
+    var hidesSearch = UserDefaults.standard.bool(forKey: AppStore.hidesSearchKey) {
+        didSet { UserDefaults.standard.set(hidesSearch, forKey: Self.hidesSearchKey) }
+    }
+    /// Search shows unless it was hidden with no indexer to search; adding one brings it back.
+    var showsSearch: Bool { !hidesSearch || !indexers.isEmpty }
+    private static let hidesSearchKey = "hidesSearch"
     /// Settings shows connection errors in its form, clear of its buttons, so the app's banner
     /// leaves them out while it's on screen.
     var settingsOnScreen = false

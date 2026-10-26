@@ -80,6 +80,12 @@ extension UIApplication {
         max(windowTopInset - 34, 28)
     }
 
+    /// The window's height, for placing things at the same height in either pane.
+    static var windowHeight: CGFloat {
+        shared.connectedScenes.lazy.compactMap { $0 as? UIWindowScene }
+            .first?.keyWindow?.bounds.height ?? 0
+    }
+
     /// The window's top safe area inset.
     static var windowTopInset: CGFloat {
         shared.connectedScenes.lazy.compactMap { $0 as? UIWindowScene }
