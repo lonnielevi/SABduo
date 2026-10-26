@@ -61,8 +61,9 @@ struct PriorityBadge: View {
 /// Shared by the row context menu and the detail view's toolbar.
 struct JobMenu: View {
     @Environment(AppStore.self) private var store
+    @AppStorage(RemovalPrompt.storageKey) private var skipped = SkippedPrompts()
+    @State private var dontAsk = false
     let job: QueueSlot
-    let onDelete: () -> Void
 
     var body: some View {
         Button(job.isPaused ? "Resume" : "Pause", systemImage: job.isPaused ? "play.fill" : "pause.fill") {
@@ -82,7 +83,24 @@ struct JobMenu: View {
             Task { await store.move(fromOffsets: [job.index(in: store.slots)], toOffset: store.slots.count) }
         }
         Divider()
-        Button("Delete", systemImage: "trash", role: .destructive, action: onDelete)
+        // Asks in a submenu, like clearing the queue, unless that's turned off.
+        if skipped.asks(.deleteJob) {
+            Menu("Delete", systemImage: "trash") {
+                Section("Downloaded files for this job will be removed.") {
+                    Button("Delete job and files", systemImage: "trash", role: .destructive) {
+                        if dontAsk { skipped.skip(.deleteJob) }
+                        delete()
+                    }
+                    DontAskAgainToggle(isOn: $dontAsk)
+                }
+            }
+        } else {
+            Button("Delete", systemImage: "trash", role: .destructive, action: delete)
+        }
+    }
+
+    private func delete() {
+        Task { await store.delete(job) }
     }
 }
 

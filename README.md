@@ -4,6 +4,16 @@ A SwiftUI client for [SABnzbd](https://sabnzbd.org), with Newznab indexer search
 foldable iPhone Duo. Folded, it's a single page on the cover display. Unfolded, it shows two panes:
 the queue or history beside search.
 
+<p align="center">
+  <img src="docs/screenshots/unfolded-landscape.png" alt="Unfolded in landscape: the queue beside search, with the side rail" width="720">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/folded-queue.png" alt="Folded: the queue on the cover display" width="230">
+  <img src="docs/screenshots/folded-history.png" alt="Folded: history on the cover display" width="230">
+  <img src="docs/screenshots/unfolded-portrait.png" alt="Unfolded in portrait: the queue beside search" width="230">
+</p>
+
 ## Features
 
 **Queue and history**

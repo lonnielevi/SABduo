@@ -52,38 +52,69 @@ struct HistoryView: View {
 /// anywhere else cancels; downloaded files are kept either way.
 struct HistoryClearButtons: View {
     @Environment(AppStore.self) private var store
+    @AppStorage(RemovalPrompt.storageKey) private var skipped = SkippedPrompts()
+    /// The menus with "Don't ask again" ticked.
+    @State private var dontAsk: Set<HistoryClearScope> = []
 
     var body: some View {
         Group {
+            // The trash leads, as on the queue.
+            button(.all, systemImage: "trash")
+                .disabled(store.history.isEmpty)
             button(.completed, systemImage: "checkmark.circle")
                 .disabled(!store.history.contains { $0.isCompleted })
             button(.failed, systemImage: "xmark.octagon")
                 .disabled(!store.history.contains { $0.isFailed })
-            button(.all, systemImage: "trash")
-                .disabled(store.history.isEmpty)
         }
         .disabled(!store.isConfigured)
     }
 
+    @ViewBuilder
     private func button(_ scope: HistoryClearScope, systemImage: String) -> some View {
-        Menu {
-            Section(scope.question) {
-                Button(scope.action, systemImage: "trash", role: .destructive) {
-                    Task { await store.clearHistory(scope) }
+        let clear: () -> Void = { Task { await store.clearHistory(scope) } }
+        let label = Label(scope.action, systemImage: systemImage)
+        if skipped.asks(scope.prompt) {
+            Menu {
+                Section(scope.question) {
+                    Button(scope.confirmation, systemImage: "trash", role: .destructive) {
+                        if dontAsk.contains(scope) { skipped.skip(scope.prompt) }
+                        clear()
+                    }
+                    DontAskAgainToggle(isOn: Binding(
+                        get: { dontAsk.contains(scope) },
+                        set: { if $0 { dontAsk.insert(scope) } else { dontAsk.remove(scope) } }
+                    ))
                 }
-            }
-        } label: {
-            Label(scope.action, systemImage: systemImage)
+            } label: { label }
+        } else {
+            Button(action: clear) { label }
         }
     }
 }
 
 private extension HistoryClearScope {
+    var prompt: RemovalPrompt {
+        switch self {
+        case .all: .clearAllHistory
+        case .completed: .clearCompletedHistory
+        case .failed: .clearFailedHistory
+        }
+    }
+
     var question: String {
         switch self {
         case .completed: "Clear completed downloads from history? Their files are kept."
         case .failed: "Clear failed downloads from history? Their files are kept."
         case .all: "Clear all history? Downloaded files are kept."
+        }
+    }
+
+    /// The prompt's button, in sentence case like the rest of the prompt.
+    var confirmation: String {
+        switch self {
+        case .completed: "Clear completed"
+        case .failed: "Clear failed"
+        case .all: "Clear all history"
         }
     }
 

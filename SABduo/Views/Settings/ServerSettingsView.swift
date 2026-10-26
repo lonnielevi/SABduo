@@ -15,6 +15,7 @@ struct ServerSettingsView: View {
     @AppStorage(SpeedUnit.storageKey) private var speedUnit: SpeedUnit = .megabytes
     @AppStorage(TimeLeftStyle.storageKey) private var timeStyle: TimeLeftStyle = .countdown
     @AppStorage(Appearance.storageKey) private var appearance: Appearance = .system
+    @AppStorage(RemovalPrompt.storageKey) private var skipped = SkippedPrompts()
 
     private enum TestState: Equatable {
         case idle, testing, success, failure(String)
@@ -89,10 +90,14 @@ struct ServerSettingsView: View {
                 server
                 indexers
                 display
+                removing
                 about
             }
             .listRowBackground(rowFill)
         }
+        // The first section's header brings its own space above it; take it back, so "Status"
+        // starts level with the first card on the other pages.
+        .contentMargins(.top, -6, for: .scrollContent)
         .onChange(of: draftConfig) { testState = .idle }
         .onChange(of: apiKey) { testState = .idle }
     }
@@ -259,6 +264,15 @@ struct ServerSettingsView: View {
             Text("Display")
         } footer: {
             Text("Tapping the speed or time left above the queue also switches them.")
+        }
+    }
+
+    private var removing: some View {
+        Section {
+            Button("Reset Prompts") { skipped = SkippedPrompts() }
+                .disabled(skipped.isEmpty)
+        } footer: {
+            Text("Resets all confirmations turned off with \"Don't ask again.\"")
         }
     }
 

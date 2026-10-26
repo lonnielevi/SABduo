@@ -4,6 +4,7 @@ struct JobDetailView: View {
     @Environment(AppStore.self) private var store
     let jobID: QueueSlot.ID
     @State private var confirmingDelete = false
+    @AppStorage(RemovalPrompt.storageKey) private var skipped = SkippedPrompts()
 
     var body: some View {
         if let job = store.job(jobID) {
@@ -61,25 +62,36 @@ struct JobDetailView: View {
 
             Section {
                 Button("Delete Job", systemImage: "trash", role: .destructive) {
-                    confirmingDelete = true
+                    if skipped.asks(.deleteJob) {
+                        confirmingDelete = true
+                    } else {
+                        Task { await store.delete(job) }
+                    }
+                }
+                // On the row, so the prompt points at it.
+                .confirmationDialog("Delete \(job.filename)?", isPresented: $confirmingDelete, titleVisibility: .visible) {
+                    Button("Delete job and files", role: .destructive) {
+                        Task { await store.delete(job) }
+                    }
+                    Button("Delete and don't ask again", role: .destructive) {
+                        skipped.skip(.deleteJob)
+                        Task { await store.delete(job) }
+                    }
+                } message: {
+                    Text("Downloaded files for this job will be removed.")
                 }
             }
         }
         .navigationTitle("Job")
         .navigationBarTitleDisplayMode(.inline)
+        // The job's name heads the page already; the title stays for the back button and VoiceOver.
+        .toolbar(removing: .title)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu("Actions", systemImage: "ellipsis") {
-                    JobMenu(job: job, onDelete: { confirmingDelete = true })
+                    JobMenu(job: job)
                 }
             }
-        }
-        .confirmationDialog("Delete \(job.filename)?", isPresented: $confirmingDelete, titleVisibility: .visible) {
-            Button("Delete Job and Files", role: .destructive) {
-                Task { await store.delete(job) }
-            }
-        } message: {
-            Text("Downloaded files for this job will be removed.")
         }
     }
 }

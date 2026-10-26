@@ -6,13 +6,28 @@ struct SearchStack<Header: View>: View {
     @Environment(AppStore.self) private var store
     @Environment(\.isUnfolded) private var isUnfolded
     @Environment(\.usesBottomBar) private var usesBottomBar
-    /// Folded, the download stats, above the home screen.
+    /// Folded, the download stats, pinned above the home screen and its search field.
     @ViewBuilder var header: Header
     /// How far the side rail insets the pages. Unfolded it insets the navigation but not what
     /// floats over it, so the field takes the inset from here.
     @State private var pageInset: CGFloat = 0
 
     var body: some View {
+        // Outside the navigation, so it stays put as the page scrolls, with the page's search
+        // field beneath it. On the home screen only, as on the other pages.
+        VStack(spacing: 0) {
+            if Header.self != EmptyView.self, store.search.path.isEmpty {
+                header
+                    // Level with the other pages' stats, which sit beneath their empty navigation bar,
+                    // and the field beneath level with their first card.
+                    .padding(.top, 24)
+                    .padding(.bottom, -2)
+            }
+            navigation
+        }
+    }
+
+    private var navigation: some View {
         NavigationStack(path: Bindable(store.search).path) {
             home
                 // Read from the home screen even while it's pushed aside: the inset doesn't move.
@@ -22,6 +37,7 @@ struct SearchStack<Header: View>: View {
                         .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.trailing } action: { pageInset = $0 }
                 }
                 .toolbar { SearchButtons() }
+                .modifier(NativeSearch())
                 .modifier(SearchPaneBackground())
                 .navigationDestination(for: SearchRoute.self) { route in
                     Group {
@@ -32,27 +48,39 @@ struct SearchStack<Header: View>: View {
                         }
                     }
                     .toolbar { SearchButtons() }
+                    .modifier(NativeSearch())
                     .modifier(SearchPaneBackground())
                 }
         }
-        // Room for the end of a list to scroll clear of the floating field.
-        .contentMargins(.bottom, 68, for: .scrollContent)
-        .environment(\.floatingBottomInset, 68)
-        // The only text field is the search field, so pages stay put for the keyboard.
-        .ignoresSafeArea(.keyboard)
-        // The system's field would go in the side rail, so the field floats over the bottom of the
-        // page instead.
-        .overlay(alignment: .bottom) { SearchPill(pageInset: pageInset) }
     }
 
-    /// The home screen, under the header when there is one. Unfolded there's none, and an empty
-    /// bar would push the home screen down the pane.
-    @ViewBuilder private var home: some View {
-        if Header.self == EmptyView.self {
-            SearchView()
-        } else {
-            SearchView().safeAreaBar(edge: .top) { header }
-        }
+    private var home: some View {
+        SearchView()
+    }
+}
+
+extension SearchStack where Header == EmptyView {
+    init() { header = EmptyView() }
+}
+
+/// The system's search field, across the top of each search page and always showing, as in
+/// Apple Music. Trying it in place of `SearchPill`.
+private struct NativeSearch: ViewModifier {
+    @Environment(AppStore.self) private var store
+
+    func body(content: Content) -> some View {
+        @Bindable var search = store.search
+        let feed = store.search.activeFeed
+        @Bindable var bindableFeed = feed
+        let client = store.newznabClient(for: store.activeIndexer)
+        content
+            .searchable(
+                text: $bindableFeed.query,
+                isPresented: $search.fieldOpen,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: store.searchPrompt(for: feed)
+            )
+            .onSubmit(of: .search) { store.search.submit(feed, using: client) }
     }
 }
 
@@ -77,10 +105,6 @@ private extension AppStore {
         if let category = feed.category { return "Search \(category.name)" }
         return activeIndexer.map { "Search \($0.name)" } ?? "Search"
     }
-}
-
-extension SearchStack where Header == EmptyView {
-    init() { header = EmptyView() }
 }
 
 /// Search's buttons in the navigation bar: back from results on the home screen, and unfolded,

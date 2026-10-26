@@ -99,3 +99,29 @@ enum Appearance: String, CaseIterable, Identifiable {
         }
     }
 }
+
+/// A prompt before removing something, each turned off on its own by its "Don't Ask Again".
+enum RemovalPrompt: String, CaseIterable {
+    case clearQueue, deleteJob, clearAllHistory, clearCompletedHistory, clearFailedHistory
+
+    static let storageKey = "skippedRemovalPrompts"
+}
+
+/// The prompts turned off, saved as their names; Settings' Reset Prompts empties it.
+struct SkippedPrompts: RawRepresentable {
+    private var prompts: Set<RemovalPrompt>
+
+    init() { prompts = [] }
+
+    init(rawValue: String) {
+        prompts = Set(rawValue.split(separator: ",").compactMap { RemovalPrompt(rawValue: String($0)) })
+    }
+
+    var rawValue: String { prompts.map(\.rawValue).sorted().joined(separator: ",") }
+
+    var isEmpty: Bool { prompts.isEmpty }
+
+    func asks(_ prompt: RemovalPrompt) -> Bool { !prompts.contains(prompt) }
+
+    mutating func skip(_ prompt: RemovalPrompt) { prompts.insert(prompt) }
+}

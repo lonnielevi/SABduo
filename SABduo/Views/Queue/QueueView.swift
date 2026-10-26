@@ -5,7 +5,8 @@ struct QueueView: View {
     @Environment(\.rootActions) private var actions
     /// In the split layout the detail sits beside the list, so mark the open job.
     var highlightsSelection = false
-    @State private var pendingDelete: QueueSlot?
+    @State private var pendingDelete: QueueSlot.ID?
+    @AppStorage(RemovalPrompt.storageKey) private var skipped = SkippedPrompts()
     @Environment(\.listRowFill) private var rowFill
 
     var body: some View {
@@ -26,11 +27,32 @@ struct QueueView: View {
                             Task { await store.togglePause(job) }
                         }
                         .tint(job.isPaused ? .green : .orange)
-                        Button("Delete", systemImage: "trash", role: .destructive) {
-                            pendingDelete = job
+                        // Not `.destructive`: that slides the row away before the prompt asks.
+                        Button("Delete", systemImage: "trash") {
+                            delete(job)
                         }
+                        .tint(.red)
                     }
-                    .contextMenu { JobMenu(job: job, onDelete: { pendingDelete = job }) }
+                    .contextMenu { JobMenu(job: job) }
+                    // On the row, so the prompt points at the job.
+                    .confirmationDialog(
+                        "Delete \(job.filename)?",
+                        isPresented: Binding(
+                            get: { pendingDelete == job.id },
+                            set: { if !$0 { pendingDelete = nil } }
+                        ),
+                        titleVisibility: .visible
+                    ) {
+                        Button("Delete job and files", role: .destructive) {
+                            Task { await store.delete(job) }
+                        }
+                        Button("Delete and don't ask again", role: .destructive) {
+                            skipped.skip(.deleteJob)
+                            Task { await store.delete(job) }
+                        }
+                    } message: {
+                        Text("Downloaded files for this job will be removed.")
+                    }
                 }
                 .onMove { source, destination in
                     Task { await store.move(fromOffsets: source, toOffset: destination) }
@@ -57,17 +79,14 @@ struct QueueView: View {
         .refreshable { await store.refresh() }
         .navigationTitle("Queue")
         .listsToolbar()
-        .confirmationDialog(
-            "Delete \(pendingDelete?.filename ?? "job")?",
-            isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
-            titleVisibility: .visible,
-            presenting: pendingDelete
-        ) { job in
-            Button("Delete Job and Files", role: .destructive) {
-                Task { await store.delete(job) }
-            }
-        } message: { _ in
-            Text("Downloaded files for this job will be removed.")
+    }
+
+    /// Asks first, unless that prompt is turned off.
+    private func delete(_ job: QueueSlot) {
+        if skipped.asks(.deleteJob) {
+            pendingDelete = job.id
+        } else {
+            Task { await store.delete(job) }
         }
     }
 }
@@ -97,7 +116,6 @@ struct QueueStatsCard: View {
 struct QueueSummary: View {
     @Environment(AppStore.self) private var store
     @AppStorage(SpeedUnit.storageKey) private var unit: SpeedUnit = .megabytes
-    @AppStorage(TimeLeftStyle.storageKey) private var timeStyle: TimeLeftStyle = .countdown
     var showsServerLight = false
 
     var body: some View {
@@ -118,14 +136,30 @@ struct QueueSummary: View {
             .accessibilityLabel("Speed")
             .accessibilityHint("Shows the speed in \(unit.next.name.lowercased())")
 
-            ViewThatFits(in: .horizontal) {
-                details(queue).font(.subheadline)
-                details(queue).font(.footnote)
-            }
-            .foregroundStyle(.secondary)
+            QueueDetailsLine(showsServerLight: showsServerLight)
         }
         .monospacedDigit()
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+}
+
+
+/// Beneath the speed: "53.6 GB left · 6 jobs · 1h 16m", any limit, and the server's light, a
+/// size smaller when it won't fit. Tapping the time swaps the countdown for when it'll finish.
+struct QueueDetailsLine: View {
+    @Environment(AppStore.self) private var store
+    @AppStorage(SpeedUnit.storageKey) private var unit: SpeedUnit = .megabytes
+    @AppStorage(TimeLeftStyle.storageKey) private var timeStyle: TimeLeftStyle = .countdown
+    var showsServerLight = false
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            details(store.queue).font(.subheadline)
+            details(store.queue).font(.footnote)
+        }
+        .foregroundStyle(.secondary)
+        .monospacedDigit()
     }
 
     /// "53.6 GB left · 6 jobs · 1h 16m", and the server's light.
@@ -159,14 +193,14 @@ struct QueueSummary: View {
     private func timeLeft(_ queue: Queue?) -> some View {
         switch timeStyle {
         case .countdown:
-            Text(countdown(queue) ?? "–").accessibilityLabel("Finishes in")
+            Text(Self.countdown(queue) ?? "–").accessibilityLabel("Finishes in")
         case .finishTime:
-            Text(finishTime(queue) ?? "–").accessibilityLabel("Finishes at")
+            Text(Self.finishTime(queue, lastUpdated: store.lastUpdated) ?? "–").accessibilityLabel("Finishes at")
         }
     }
 
     /// "1h 16m", or "2d 3h" for a long queue, or seconds under a minute.
-    private func countdown(_ queue: Queue?) -> String? {
+    static func countdown(_ queue: Queue?) -> String? {
         guard let seconds = queue?.secondsLeft else { return nil }
         let units: Set<Duration.UnitsFormatStyle.Unit> = seconds >= 86_400 ? [.days, .hours]
             : seconds >= 60 ? [.hours, .minutes] : [.seconds]
@@ -174,9 +208,9 @@ struct QueueSummary: View {
     }
 
     /// When the queue will finish at the current speed: "4:12 PM", or "Sat 4:12 PM" after today.
-    private func finishTime(_ queue: Queue?) -> String? {
+    static func finishTime(_ queue: Queue?, lastUpdated: Date?) -> String? {
         guard let queue, !queue.paused, let seconds = queue.secondsLeft else { return nil }
-        let finish = (store.lastUpdated ?? .now).addingTimeInterval(TimeInterval(seconds))
+        let finish = (lastUpdated ?? .now).addingTimeInterval(TimeInterval(seconds))
         return Calendar.current.isDateInToday(finish)
             ? finish.formatted(date: .omitted, time: .shortened)
             : finish.formatted(.dateTime.weekday(.abbreviated).hour().minute())
@@ -191,17 +225,47 @@ nonisolated extension String {
 /// reorder by pressing and holding one, then dragging it.
 struct ClearQueueButton: View {
     @Environment(AppStore.self) private var store
+    @AppStorage(RemovalPrompt.storageKey) private var skipped = SkippedPrompts()
+    @State private var dontAsk = false
 
     var body: some View {
-        Menu {
-            Section("Every job in the queue and its downloaded files will be removed.") {
-                Button("Delete All \(store.slots.count) Jobs and Files", systemImage: "trash", role: .destructive) {
-                    Task { await store.clearQueue() }
-                }
+        let label = Label("Clear Queue", systemImage: "trash")
+        Group {
+            if skipped.asks(.clearQueue) {
+                Menu {
+                    Section("Every job in the queue and its downloaded files will be removed.") {
+                        Button("Delete all \(store.slots.count) jobs and files", systemImage: "trash", role: .destructive) {
+                            if dontAsk { skipped.skip(.clearQueue) }
+                            clear()
+                        }
+                        DontAskAgainToggle(isOn: $dontAsk)
+                    }
+                } label: { label }
+            } else {
+                Button(action: clear) { label }
             }
-        } label: {
-            Label("Clear Queue", systemImage: "trash")
         }
         .disabled(!store.isConfigured || store.slots.isEmpty)
+    }
+
+    private func clear() {
+        Task { await store.clearQueue() }
+    }
+}
+
+/// In a removal's menu, ticked before its button: once that goes ahead, the menu stops asking.
+/// Settings' Reset Prompts brings it back. The menu stays open while it's ticked.
+///
+/// A button with its own circle rather than a `Toggle`: a menu's checkmark adds a column when it
+/// appears, which shifts every row across.
+struct DontAskAgainToggle: View {
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Button("Don't ask again", systemImage: isOn ? "checkmark.circle.fill" : "circle") {
+            isOn.toggle()
+        }
+        .menuActionDismissBehavior(.disabled)
+        .accessibilityAddTraits(isOn ? .isSelected : [])
     }
 }

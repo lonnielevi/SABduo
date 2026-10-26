@@ -1,13 +1,20 @@
 import SwiftUI
 
-/// Folded: one page at a time, picked from the tab bar, which the cover display puts in the side rail: Queue, History
-/// and Settings, with Search apart at the end, as in Apple's apps. A job opens over the queue.
+/// Folded: one page at a time, picked from the tab bar, which the cover display puts in the side rail: Search,
+/// Queue, History and Settings. A job opens over the queue.
 struct CompactLayout: View {
     @Environment(AppStore.self) private var store
     @State private var page: Page = .queue
 
     var body: some View {
         TabView(selection: Binding(get: { page }, set: show)) {
+            // A plain tab at the top of the rail, as in Apple Music's sidebar, rather than the search
+            // role's tab apart at the end. Its field runs across the top of its pages.
+            if store.showsSearch {
+                Tab(Page.search.title, systemImage: Page.search.systemImage, value: .search) {
+                    SearchStack { header }
+                }
+            }
             Tab(Page.queue.title, systemImage: Page.queue.systemImage, value: .queue) {
                 // The path mirrors `selectedJobID`, so a job opened while unfolded stays open after folding.
                 NavigationStack(path: selectionPath) {
@@ -30,11 +37,6 @@ struct CompactLayout: View {
                         .navigationBarTitleDisplayMode(.inline)
                         .toolbar(removing: .title)
                         .topPage(header)
-                }
-            }
-            if store.showsSearch {
-                Tab(Page.search.title, systemImage: Page.search.systemImage, value: .search, role: .search) {
-                    SearchStack { header }
                 }
             }
         }
