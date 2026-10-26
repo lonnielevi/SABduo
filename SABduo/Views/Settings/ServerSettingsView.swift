@@ -286,7 +286,9 @@ struct ServerSettingsView: View {
         let info = Bundle.main.infoDictionary
         let short = info?["CFBundleShortVersionString"] as? String ?? "–"
         let build = info?["CFBundleVersion"] as? String
-        return build.map { "\(short) (\($0))" } ?? short
+        // The build matches the version unless it's been set apart, for TestFlight say.
+        guard let build, build != short else { return short }
+        return "\(short) (\(build))"
     }
 
     private func load() {
