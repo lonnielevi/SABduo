@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Header over a search's results, with the star that saves it. It lives in the list rather than
+/// Header over a search's results, with the heart that saves it. It lives in the list rather than
 /// the toolbar, since an iPhone hides toolbar buttons while the search field is active.
 struct ResultsHeader: View {
     @Environment(AppStore.self) private var store
@@ -16,7 +16,7 @@ struct ResultsHeader: View {
             Button {
                 store.search.toggleFavorite(query: query, category: category)
             } label: {
-                Label(isFavorite ? "Favorited" : "Favorite this search", systemImage: isFavorite ? "star.fill" : "star")
+                Label(isFavorite ? "Favorited" : "Favorite this search", systemImage: isFavorite ? "heart.fill" : "heart")
             }
             .buttonStyle(.borderless)
             .tint(isFavorite ? .yellow : nil)
@@ -34,7 +34,7 @@ struct FavoriteRow: View {
             Text(saved.query)
             Text(saved.category?.path ?? "All Categories")
         } icon: {
-            Image(systemName: "star.fill").foregroundStyle(Color.accentColor)
+            Image(systemName: "heart").foregroundStyle(Color.accentColor)
         }
     }
 }

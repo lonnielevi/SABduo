@@ -46,7 +46,7 @@ final class SearchModel {
     @ObservationIgnored private var feeds: [FeedKey: ResultFeed] = [:]
 
     private enum FeedKey: Hashable {
-        /// The search field on the home screen (all categories).
+        /// The search field on the home screen (every category not hidden).
         case home
         case category(Int?)
     }
@@ -69,8 +69,19 @@ final class SearchModel {
             guard let self, let indexerID else { return }
             reachable[indexerID] = false
         }
+        if key == .home {
+            feed.homeCategoryIDs = { [weak self] in self?.searchedCategoryIDs ?? [] }
+        }
         feeds[key] = feed
         return feed
+    }
+
+    /// What a search from the home screen covers: everything, or only the categories left showing
+    /// once some are hidden.
+    private var searchedCategoryIDs: [Int] {
+        let all = categories(for: indexerID)
+        guard all.contains(where: { hiddenCategoryIDs.contains($0.id) }) else { return [] }
+        return all.map(\.id).filter { !hiddenCategoryIDs.contains($0) }
     }
 
     /// The feed a search typed now applies to: the category open here or nearest above (a release
@@ -182,9 +193,9 @@ final class SearchModel {
             .map(\.element)
     }
 
-    func moveCategories(_ categories: [IndexerCategory], fromOffsets source: IndexSet, toOffset destination: Int) {
-        var ids = categories.map(\.id)
-        ids.move(fromOffsets: source, toOffset: destination)
+    /// Moves among the categories on screen; hidden ones off screen keep their places.
+    func moveCategories(_ shown: [IndexerCategory], among categories: [IndexerCategory], fromOffsets source: IndexSet, toOffset destination: Int) {
+        let ids = Self.moving(shown.map(\.id), within: categories.map(\.id), fromOffsets: source, toOffset: destination)
         // Keep the places of categories this indexer doesn't have, for the next one that does.
         categoryOrder = ids + categoryOrder.filter { !ids.contains($0) }
         UserDefaults.standard.set(categoryOrder, forKey: Self.categoryOrderKey)
@@ -224,6 +235,14 @@ final class SearchModel {
         UserDefaults.standard.set(hiddenFavoriteIDs.map(\.uuidString), forKey: Self.hiddenFavoritesKey)
     }
 
+    /// Moves within the shown items, then puts them back in the slots they held among all of them.
+    private static func moving<ID: Equatable>(_ shown: [ID], within all: [ID], fromOffsets source: IndexSet, toOffset destination: Int) -> [ID] {
+        var moved = shown
+        moved.move(fromOffsets: source, toOffset: destination)
+        var next = moved.makeIterator()
+        return all.map { shown.contains($0) ? next.next()! : $0 }
+    }
+
     private static let hiddenCategoriesKey = "hiddenCategoryIDs"
     private static let categoryOrderKey = "categoryOrder"
     private static let hiddenFavoritesKey = "hiddenFavoriteIDs"
@@ -257,8 +276,11 @@ final class SearchModel {
         saveFavorites()
     }
 
-    func moveFavorites(fromOffsets source: IndexSet, toOffset destination: Int) {
-        favorites.move(fromOffsets: source, toOffset: destination)
+    /// Moves among the favorites on screen; hidden ones off screen keep their places.
+    func moveFavorites(_ shown: [SavedSearch], fromOffsets source: IndexSet, toOffset destination: Int) {
+        let order = Self.moving(shown.map(\.id), within: favorites.map(\.id), fromOffsets: source, toOffset: destination)
+        let byID = Dictionary(uniqueKeysWithValues: favorites.map { ($0.id, $0) })
+        favorites = order.compactMap { byID[$0] }
         saveFavorites()
     }
 
@@ -303,6 +325,8 @@ final class ResultFeed {
     /// Each answer from the indexer, with the usage it reported if any.
     @ObservationIgnored private let onReply: (APILimits?) -> Void
     @ObservationIgnored private let onFailure: () -> Void
+    /// Without a category, the categories a search covers; empty means all of them.
+    @ObservationIgnored var homeCategoryIDs: () -> [Int] = { [] }
 
     init(category: IndexerCategory?, onReply: @escaping (APILimits?) -> Void, onFailure: @escaping () -> Void) {
         self.category = category
@@ -318,7 +342,7 @@ final class ResultFeed {
         return lastPageCount >= NewznabClient.pageSize
     }
 
-    private var categoryIDs: [Int] { category.map { [$0.id] } ?? [] }
+    private var categoryIDs: [Int] { category.map { [$0.id] } ?? homeCategoryIDs() }
 
     /// Loads page one for the current query (empty = latest). Indexers rate-limit API hits,
     /// so callers only invoke this on submit, on first appearance, or on pull-to-refresh.

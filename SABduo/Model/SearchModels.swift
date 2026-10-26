@@ -37,7 +37,7 @@ nonisolated enum SearchCategory: Int, CaseIterable, Identifiable, Sendable {
         case .books: "book"
         case .pc: "desktopcomputer"
         case .console: "gamecontroller"
-        case .xxx: "eye.slash"
+        case .xxx: "18.circle"
         case .misc: "shippingbox"
         }
     }

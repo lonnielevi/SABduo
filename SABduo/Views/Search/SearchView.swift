@@ -4,9 +4,8 @@ import SwiftUI
 struct SearchView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.rootActions) private var actions
-    /// Arranging the home screen: every favorite and category shows, with a handle to move it and
-    /// an eye to hide or show it.
-    @State private var editing = false
+    /// Whether hidden favorites and categories show, dimmed, so a swipe can show them again.
+    @State private var showHidden = false
 
     var body: some View {
         let indexer = store.activeIndexer
@@ -27,70 +26,78 @@ struct SearchView: View {
                     IndexerPicker(indexer: indexer)
                 }
 
-                if !store.search.favorites.isEmpty {
-                    let favorites = store.search.favorites.filter { editing || !store.search.hiddenFavoriteIDs.contains($0.id) }
+                // A section goes, header and all, when everything in it is hidden.
+                let favorites = store.search.favorites.filter { showHidden || !store.search.hiddenFavoriteIDs.contains($0.id) }
+                if !favorites.isEmpty {
                     Section {
                         ForEach(favorites) { saved in
-                            if editing {
-                                let hidden = store.search.hiddenFavoriteIDs.contains(saved.id)
-                                VisibilityRow(hidden: hidden) {
-                                    store.search.setFavorite(saved, hidden: !hidden)
-                                } label: {
-                                    FavoriteRow(saved: saved)
+                            let hidden = store.search.hiddenFavoriteIDs.contains(saved.id)
+                            Button { store.search.run(saved, using: client) } label: {
+                                FavoriteRow(saved: saved).opacity(hidden ? 0.4 : 1)
+                            }
+                            .foregroundStyle(.primary)
+                            .contextMenu {
+                                Button("Remove from Favorites", systemImage: "heart.slash", role: .destructive) {
+                                    store.search.removeFavorite(saved)
                                 }
-                            } else {
-                                Button { store.search.run(saved, using: client) } label: {
-                                    FavoriteRow(saved: saved)
-                                }
-                                .foregroundStyle(.primary)
-                                .contextMenu {
-                                    Button("Remove from Favorites", systemImage: "star.slash", role: .destructive) {
-                                        store.search.removeFavorite(saved)
-                                    }
+                            }
+                            // A swipe only offers hiding or deleting; either takes a tap.
+                            .swipeActions(allowsFullSwipe: false) {
+                                HideButton(hidden: hidden) { store.search.setFavorite(saved, hidden: !hidden) }
+                                Button("Delete", systemImage: "trash", role: .destructive) {
+                                    withAnimation { store.search.removeFavorite(saved) }
                                 }
                             }
                         }
-                        .onDelete { offsets in
-                            for saved in offsets.map({ favorites[$0] }) { store.search.removeFavorite(saved) }
-                        }
-                        // Editing shows every favorite, so offsets match the stored order.
-                        .onMove(perform: editing ? { store.search.moveFavorites(fromOffsets: $0, toOffset: $1) } : nil)
-                        // While editing, the eye hides a favorite; deleting stays a swipe away outside it.
-                        .deleteDisabled(editing)
+                        .onMove { store.search.moveFavorites(favorites, fromOffsets: $0, toOffset: $1) }
                     } header: {
-                        EditableHeader(title: "Favorites", editing: $editing)
+                        Text("Favorites")
                     }
                 }
 
                 let allCategories = store.search.categories(for: indexer.id)
-                let categories = allCategories.filter { editing || !store.search.hiddenCategoryIDs.contains($0.id) }
-                Section {
-                    ForEach(categories) { category in
-                        if editing {
+                let categories = allCategories.filter { showHidden || !store.search.hiddenCategoryIDs.contains($0.id) }
+                if !categories.isEmpty {
+                    Section {
+                        ForEach(categories) { category in
                             let hidden = store.search.hiddenCategoryIDs.contains(category.id)
-                            VisibilityRow(hidden: hidden) {
-                                store.search.setCategory(category, hidden: !hidden)
-                            } label: {
-                                CategoryRow(category: category)
-                            }
-                        } else {
                             NavigationLink(value: category.subcategories.isEmpty ? SearchRoute.browse(category) : .category(category)) {
-                                CategoryRow(category: category)
+                                CategoryRow(category: category).opacity(hidden ? 0.4 : 1)
+                            }
+                            // Categories come from the indexer, so they hide rather than delete. As with
+                            // favorites, a swipe only offers it.
+                            .swipeActions(allowsFullSwipe: false) {
+                                HideButton(hidden: hidden) { store.search.setCategory(category, hidden: !hidden) }
                             }
                         }
+                        .onMove { store.search.moveCategories(categories, among: allCategories, fromOffsets: $0, toOffset: $1) }
+                    } header: {
+                        Text("Categories")
+                    } footer: {
+                        switch store.search.caps[indexer.id] {
+                        case .loading:
+                            Text("Loading \(indexer.name)'s categories…")
+                        case .failed(let message):
+                            Text("Couldn't load \(indexer.name)'s categories (\(message)). Showing the standard ones.")
+                        default:
+                            EmptyView()
+                        }
                     }
-                    .onMove(perform: editing ? { store.search.moveCategories(allCategories, fromOffsets: $0, toOffset: $1) } : nil)
-                } header: {
-                    EditableHeader(title: "Categories", editing: $editing)
-                } footer: {
-                    switch store.search.caps[indexer.id] {
-                    case .loading:
-                        Text("Loading \(indexer.name)'s categories…")
-                    case .failed(let message):
-                        Text("Couldn't load \(indexer.name)'s categories (\(message)). Showing the standard ones.")
-                    default:
-                        EmptyView()
+                }
+
+                let anyHidden = store.search.favorites.contains { store.search.hiddenFavoriteIDs.contains($0.id) }
+                    || allCategories.contains { store.search.hiddenCategoryIDs.contains($0.id) }
+                if anyHidden || showHidden {
+                    Section {
+                        Button(showHidden ? "Done" : "Show Hidden") {
+                            withAnimation { showHidden.toggle() }
+                        }
+                        .font(.subheadline)
+                        .frame(maxWidth: .infinity)
+                        // Plain text under the list, like a section's footer, rather than a row.
+                        .listRowBackground(Color.clear)
                     }
+                    .listSectionSpacing(.compact)
                 }
             }
         }
@@ -107,7 +114,6 @@ struct SearchView: View {
                 FeedStatus(feed: feed, name: indexer?.name ?? "the indexer")
             }
         }
-        .environment(\.editMode, .constant(editing ? .active : .inactive))
         .onChange(of: feed.query) {
             // Clearing the field returns to the category list.
             if feed.query.isEmpty { feed.clear() }
@@ -127,50 +133,16 @@ struct SearchView: View {
     }
 }
 
-/// A section header with the Edit button that arranges the home screen. Each section has one, so
-/// it's in reach whichever is in view; they share one editing state.
-private struct EditableHeader: View {
-    let title: String
-    @Binding var editing: Bool
-
-    var body: some View {
-        HStack {
-            Text(title)
-            Spacer()
-            Button(editing ? "Done" : "Edit") {
-                withAnimation { editing.toggle() }
-            }
-            .font(.subheadline.weight(editing ? .semibold : .regular))
-            .textCase(nil)
-        }
-    }
-}
-
-/// A row while arranging the home screen: dimmed when hidden, with an eye that shows which.
-/// Tapping it hides or shows it.
-private struct VisibilityRow<Label: View>: View {
+/// Hides a favorite or category from the home screen, or shows it again while hidden ones show.
+private struct HideButton: View {
     let hidden: Bool
     let toggle: () -> Void
-    @ViewBuilder let label: Label
 
     var body: some View {
-        Button {
+        Button(hidden ? "Show" : "Hide", systemImage: hidden ? "eye" : "eye.slash") {
             withAnimation(.snappy) { toggle() }
-        } label: {
-            HStack {
-                label
-                    .opacity(hidden ? 0.4 : 1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Image(systemName: hidden ? "eye.slash" : "eye")
-                    .foregroundStyle(hidden ? Color.secondary : Color.accentColor)
-                    .contentTransition(.symbolEffect(.replace))
-                    .frame(width: 28)
-            }
-            .contentShape(.rect)
         }
-        // Plain, so the row keeps its icon colours rather than taking the button's tint.
-        .buttonStyle(.plain)
-        .accessibilityValue(hidden ? "Hidden" : "Shown")
+        .tint(.gray)
     }
 }
 
