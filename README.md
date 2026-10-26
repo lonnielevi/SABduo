@@ -14,6 +14,10 @@ the queue or history beside search.
   <img src="docs/screenshots/unfolded-portrait.png" alt="Unfolded in portrait: the queue beside search" width="230">
 </p>
 
+<p align="center">
+  <img src="docs/screenshots/folded-landscape.png" alt="Folded in landscape: the queue on the cover display" width="480">
+</p>
+
 ## Features
 
 **Queue and history**
