@@ -34,8 +34,11 @@ struct HistoryView: View {
                     }
             }
         }
+        .opacity(store.isOffline ? 0 : 1)
         .overlay {
-            if store.isConfigured, store.queue != nil, store.history.isEmpty {
+            if store.isOffline {
+                ServerUnreachableView()
+            } else if store.isConfigured, store.queue != nil, store.history.isEmpty {
                 ContentUnavailableView("No History", systemImage: "clock")
                     .emptyStatePlacement()
             }

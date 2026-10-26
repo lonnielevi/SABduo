@@ -26,3 +26,20 @@ struct ServerConnectionLight: View {
         ConnectionLight(state: store.isConfigured ? store.isConnected : false, name: "SABnzbd")
     }
 }
+
+/// In place of the queue or history while SABnzbd isn't answering: why, and the way to fix it.
+struct ServerUnreachableView: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.rootActions) private var actions
+
+    var body: some View {
+        ContentUnavailableView {
+            Label("Can't Reach SABnzbd", systemImage: "wifi.exclamationmark")
+        } description: {
+            if let error = store.connectionError { Text(error) }
+        } actions: {
+            Button("Server Settings", action: actions.showSettings)
+        }
+        .emptyStatePlacement()
+    }
+}

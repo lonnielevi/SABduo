@@ -38,8 +38,12 @@ struct QueueView: View {
                 }
             }
         }
+        // A list from before the server stopped answering would be stale.
+        .opacity(store.isOffline ? 0 : 1)
         .overlay {
-            if store.isConfigured, store.queue != nil, store.slots.isEmpty {
+            if store.isOffline {
+                ServerUnreachableView()
+            } else if store.isConfigured, store.queue != nil, store.slots.isEmpty {
                 ContentUnavailableView("Queue Empty", systemImage: "tray", description: Text("Add an NZB from Search, Files, or the Share Sheet."))
                     .emptyStatePlacement()
             } else if !store.isConfigured {

@@ -11,10 +11,13 @@ final class AppStore {
     private(set) var queue: Queue?
     private(set) var history: [HistorySlot] = []
     private(set) var lastUpdated: Date?
+    /// A one-off failure, such as adding an NZB, for the banner.
     var errorMessage: String?
-    /// Whether the last poll reached the server; nil until one finishes. Kept apart from
-    /// `errorMessage`, which other failures (adding an NZB, say) also set.
+    /// Whether the last poll reached the server; nil until one finishes.
     private(set) var isConnected: Bool?
+    /// Why the last poll didn't reach the server. The pages show it in place of their lists,
+    /// rather than the banner, as it lasts until the server answers.
+    private(set) var connectionError: String?
     /// Brief confirmation shown after adding an NZB.
     var notice: String?
     /// Job shown in the detail pane (unfolded) or pushed (folded).
@@ -118,6 +121,7 @@ final class AppStore {
         selectedJobID = nil
         errorMessage = nil
         isConnected = nil
+        connectionError = nil
         generation += 1
     }
 
@@ -191,14 +195,17 @@ final class AppStore {
             history = newHistory.slots
             lastUpdated = .now
             isConnected = true
-            errorMessage = nil
+            connectionError = nil
             if let selectedJobID, job(selectedJobID) == nil { self.selectedJobID = nil }
         } catch {
             guard !Self.isCancellation(error), started == generation else { return }
             isConnected = false
-            errorMessage = error.localizedDescription
+            connectionError = error.localizedDescription
         }
     }
+
+    /// Configured, but the last poll didn't reach the server.
+    var isOffline: Bool { isConfigured && isConnected == false }
 
     /// Refreshes until the calling task is cancelled (e.g. the view disappears or the app backgrounds).
     func poll(every interval: Duration = .seconds(3)) async {

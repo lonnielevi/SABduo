@@ -76,8 +76,11 @@ struct SplitLayout: View {
                     .overlay(alignment: .trailing) { Divider().ignoresSafeArea() }
                     .transition(.move(edge: .leading))
             }
-            trailing
-                .frame(width: searchFills ? width : half + insets.trailing)
+            Group {
+                // While search fills the screen, they go with it instead.
+                if searchFills { trailing.statusBanner() } else { trailing }
+            }
+            .frame(width: searchFills ? width : half + insets.trailing)
         }
     }
 
@@ -87,6 +90,9 @@ struct SplitLayout: View {
         NavigationStack {
             self.page(page.listPane ?? .queue)
                 .containerBackground(Color(.systemBackground), for: .navigation)
+                // The app's errors and notices are about the server, so they go with its pages;
+                // inside the rail's inset being ignored below, so they span the pane like the stats.
+                .statusBanner()
                 .safeAreaBar(edge: .top) {
                     // Below the gap the search pane's folded-away bar leaves.
                     stats.padding(.top, 32)
@@ -115,6 +121,9 @@ struct SplitLayout: View {
                                 stats.padding(.top, UIApplication.statusBarMidY - QueueStatsCard.height / 2 - UIApplication.windowTopInset)
                             }
                             .contentMargins(.top, 8, for: .scrollContent)
+                            // The app's errors and notices are about the server, so they go with
+                            // its pages, inside the page so they sit above the tab bar.
+                            .statusBanner()
                     }
                 } label: {
                     // Icons alone, which the pages' buttons above share.

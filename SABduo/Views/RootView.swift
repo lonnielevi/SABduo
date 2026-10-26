@@ -23,7 +23,8 @@ struct RootView: View {
                 if unfolded {
                     SplitLayout(isBook: hinge == .book)
                 } else {
-                    CompactLayout()
+                    // Unfolded, the split puts it in the list pane.
+                    CompactLayout().statusBanner()
                 }
             }
             .animation(.default, value: unfolded)
@@ -39,10 +40,6 @@ struct RootView: View {
             showSettings: { store.showSettings() },
             addNZB: { showingImporter = true }
         ))
-        // Settings shows connection errors in its form instead, clear of its buttons.
-        .safeAreaInset(edge: .bottom) {
-            StatusBanner(showsError: !store.settingsOnScreen)
-        }
         .task(id: scenePhase) {
             // Poll only while the app is in the foreground; leaving cancels the task.
             guard scenePhase == .active else { return }
@@ -105,6 +102,24 @@ extension EnvironmentValues {
 }
 
 /// Non-modal error and confirmation strip; polling errors repeat, so an alert would nag.
+extension View {
+    /// Errors and notices along the bottom. Settings shows connection errors in its form instead,
+    /// clear of its buttons.
+    func statusBanner() -> some View {
+        modifier(StatusBannerInset())
+    }
+}
+
+private struct StatusBannerInset: ViewModifier {
+    @Environment(AppStore.self) private var store
+
+    func body(content: Content) -> some View {
+        content.safeAreaInset(edge: .bottom) {
+            StatusBanner(showsError: !store.settingsOnScreen)
+        }
+    }
+}
+
 private struct StatusBanner: View {
     @Environment(AppStore.self) private var store
     var showsError = true
@@ -127,6 +142,8 @@ private struct StatusBanner: View {
             }
         }
         .padding(.horizontal)
+        // Clear of the bars beneath it.
+        .padding(.bottom, 8)
         .animation(.default, value: store.errorMessage)
         .animation(.default, value: store.notice)
     }

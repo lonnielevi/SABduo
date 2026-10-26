@@ -10,10 +10,18 @@ nonisolated enum SABnzbdError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .notConfigured: "Server isn't set up yet."
-        case .insecureHost(let host): "iOS blocked plain HTTP to \(host). Turn on HTTPS."
+        case .insecureHost(let host): "Plain HTTP only works on your local network. Turn on HTTPS for \(host), or reach it over a VPN such as Tailscale."
         case .http(let code): "Server returned HTTP \(code)."
         case .server(let message): message
         case .invalidResponse: "Unexpected response from SABnzbd."
+        }
+    }
+
+    /// A shorter form for beside a button, where the full explanation already shows above.
+    var briefDescription: String? {
+        switch self {
+        case .insecureHost: "Plain HTTP blocked over the internet."
+        default: errorDescription
         }
     }
 }

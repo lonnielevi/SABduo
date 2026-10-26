@@ -105,7 +105,7 @@ struct ServerSettingsView: View {
                 ServerConnectionLight()
                 Text(statusText)
             }
-            if let error = store.errorMessage {
+            if let error = store.connectionError ?? store.errorMessage {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(.red)
             }
@@ -313,7 +313,7 @@ struct ServerSettingsView: View {
             _ = try await SABnzbdClient(apiURL: url, apiKey: trimmedKey).queue()
             testState = .success
         } catch {
-            testState = .failure(error.localizedDescription)
+            testState = .failure((error as? SABnzbdError)?.briefDescription ?? error.localizedDescription)
         }
     }
 }
