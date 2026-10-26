@@ -103,17 +103,19 @@ extension EnvironmentValues {
 extension View {
     /// Errors and notices along the bottom. Settings shows connection errors in its form instead,
     /// clear of its buttons.
-    func statusBanner() -> some View {
-        modifier(StatusBannerInset())
+    /// Off, the space stays for it to come back to without rebuilding the view it's on.
+    func statusBanner(_ isOn: Bool = true) -> some View {
+        modifier(StatusBannerInset(isOn: isOn))
     }
 }
 
 private struct StatusBannerInset: ViewModifier {
     @Environment(AppStore.self) private var store
+    let isOn: Bool
 
     func body(content: Content) -> some View {
         content.safeAreaInset(edge: .bottom) {
-            StatusBanner(showsError: !store.settingsOnScreen)
+            if isOn { StatusBanner(showsError: !store.settingsOnScreen) }
         }
     }
 }

@@ -292,7 +292,8 @@ struct SearchFullScreenButton: View {
         let isFull = store.searchFullScreen
         Button(isFull ? "Show Queue and History" : "Full Screen Search",
                systemImage: isFull ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right") {
-            withAnimation { store.searchFullScreen.toggle() }
+            // The list pane slides away as search widens, and back (see `SplitLayout`).
+            withAnimation(.smooth) { store.searchFullScreen.toggle() }
         }
     }
 }

@@ -49,8 +49,9 @@ struct ListsAccessory: View {
 }
 
 /// The pages' controls in the side rail, in landscape or folded. Unfolded, the rail runs down the
-/// trailing pane, so they go there beside its own; hidden while search fills the display.
-/// Folded, Settings puts its own in the rail.
+/// trailing pane, so they go there beside its own, and stay while search fills the display: the
+/// queue's still work then. Settings' don't, with its form slid away. Folded, Settings puts its
+/// own in the rail.
 struct ListsRailItems: ToolbarContent {
     @Environment(AppStore.self) private var store
     @Environment(\.rootActions) private var actions
@@ -63,8 +64,7 @@ struct ListsRailItems: ToolbarContent {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 SettingsButtons(controls: controls)
             }
-        } else if !usesBottomBar, store.listPane != .settings,
-           !store.searchFullScreen || store.selectedJobID != nil {
+        } else if !usesBottomBar, store.listPane != .settings {
             // Their own group, apart from the trailing pane's buttons above them.
             ToolbarSpacer(.fixed, placement: .topBarTrailing)
             if store.listPane == .queue {

@@ -35,8 +35,6 @@ struct SplitLayout: View {
                                         landscapePage(page)
                                     }
                                 }
-                                // Its pages are hidden while search fills the screen.
-                                .toolbarVisibility(searchFills ? .hidden : .visible, for: .tabBar)
                             } label: {
                                 Image(systemName: page.systemImage)
                                     .accessibilityLabel(page.title)
@@ -65,23 +63,28 @@ struct SplitLayout: View {
         }
     }
 
-    /// The two halves: the list pane's page and search, or search alone. Each takes half the room
-    /// between the insets, plus the inset on its own outer edge; with none, they meet on the fold.
+    /// The two halves: the list pane's page and search. Each takes half the room between the
+    /// insets, plus the inset on its own outer edge; with none, they meet on the fold.
+    ///
+    /// For search to fill the screen, the list pane slides off the leading edge as search widens
+    /// into its room, like an iPad sidebar hiding. It stays laid out while it's away, so it comes
+    /// back as it was.
     private func split(width: CGFloat, insets: EdgeInsets = EdgeInsets(), searchFills: Bool, @ViewBuilder leading: () -> some View) -> some View {
         let half = (width - insets.leading - insets.trailing) / 2
+        let leadingWidth = insets.leading + half
         return HStack(spacing: 0) {
-            if !searchFills {
-                leading()
-                    .frame(width: insets.leading + half)
-                    .overlay(alignment: .trailing) { Divider().ignoresSafeArea() }
-                    .transition(.move(edge: .leading))
-            }
-            Group {
-                // While search fills the screen, they go with it instead.
-                if searchFills { trailing.statusBanner() } else { trailing }
-            }
-            .frame(width: searchFills ? width : half + insets.trailing)
+            leading()
+                .frame(width: leadingWidth)
+                .overlay(alignment: .trailing) { Divider().ignoresSafeArea() }
+                .accessibilityHidden(searchFills)
+                .allowsHitTesting(!searchFills)
+            // While search fills the screen, the app's notices go with it.
+            trailing
+                .statusBanner(searchFills)
+                .frame(width: searchFills ? width : half + insets.trailing)
         }
+        .offset(x: searchFills ? -leadingWidth : 0)
+        .frame(width: width, alignment: .leading)
     }
 
     /// Landscape: a page under the stats, level with search's indexer. Its buttons are in the side
@@ -161,6 +164,10 @@ struct SplitLayout: View {
             get: { Page(store.listPane) },
             set: { page in
                 let pane = page.listPane ?? .queue
+                // A page from the rail while search fills the screen brings the list pane back.
+                if store.searchFullScreen {
+                    withAnimation(.smooth) { store.searchFullScreen = false }
+                }
                 // In landscape the page's buttons join the side rail, where an animation would slide
                 // them in from off the screen; the tab view swaps the page itself without one.
                 if UIApplication.interfaceIsLandscape {
