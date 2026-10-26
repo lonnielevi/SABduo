@@ -37,6 +37,7 @@ struct SearchStack<Header: View>: View {
         }
         // Room for the end of a list to scroll clear of the floating field.
         .contentMargins(.bottom, 68, for: .scrollContent)
+        .environment(\.floatingBottomInset, 68)
         // The only text field is the search field, so pages stay put for the keyboard.
         .ignoresSafeArea(.keyboard)
         // The system's field would go in the side rail, so the field floats over the bottom of the

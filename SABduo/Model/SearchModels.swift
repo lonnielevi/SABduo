@@ -60,11 +60,7 @@ nonisolated struct SearchResult: Identifiable, Hashable, Sendable {
 
     var grabs: Int? { attributes["grabs"].flatMap(Int.init) }
     var releaseName: ReleaseName { ReleaseName(title) }
-    /// The title with places to wrap after its dots and underscores: release names have no spaces,
-    /// so they'd otherwise break mid-word.
-    var wrappingTitle: String {
-        title.replacingOccurrences(of: ".", with: ".\u{200B}").replacingOccurrences(of: "_", with: "_\u{200B}")
-    }
+    var wrappingTitle: String { title.releaseNameWrapping }
     /// The ID `t=details` expects; feeds put it in an attr or as the guid's last path component.
     var newznabID: String { attributes["guid"] ?? URL(string: id)?.lastPathComponent ?? id }
 
@@ -107,4 +103,12 @@ nonisolated struct SearchPage: Sendable {
     /// Total matches reported by the indexer, if it says.
     var total: Int?
     var apiLimits: APILimits?
+}
+
+extension String {
+    /// A release name with places to wrap after its dots and underscores: release names have no
+    /// spaces, so they'd otherwise break mid-word.
+    nonisolated var releaseNameWrapping: String {
+        replacingOccurrences(of: ".", with: ".\u{200B}").replacingOccurrences(of: "_", with: "_\u{200B}")
+    }
 }

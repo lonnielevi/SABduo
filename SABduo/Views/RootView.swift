@@ -28,8 +28,6 @@ struct RootView: View {
                 }
             }
             .animation(.default, value: unfolded)
-            // Folded, the app stays upright: the cover display is too short for landscape.
-            .onChange(of: unfolded, initial: true) { AppDelegate.allowLandscape(unfolded) }
         }
         // Never shorten the layouts for the keyboard: the unfolded bars hang off their bottom,
         // and a keyboard's space can outlive a rotation. Views inside still see the keyboard's

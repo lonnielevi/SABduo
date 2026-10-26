@@ -9,17 +9,16 @@ struct HistoryView: View {
             ForEach(store.history) { item in
                 HistoryRow(item: item)
                     .listRowBackground(rowFill)
-                    .swipeActions(edge: .trailing) {
-                        Button("Remove", systemImage: "trash", role: .destructive) {
-                            Task { await store.remove(item) }
-                        }
-                    }
-                    .swipeActions(edge: .leading) {
+                    // Swipe left only, clear of the back gesture; the gentler action at the edge.
+                    .swipeActions(allowsFullSwipe: false) {
                         if item.canRetry {
                             Button("Retry", systemImage: "arrow.clockwise") {
                                 Task { await store.retry(item) }
                             }
                             .tint(.blue)
+                        }
+                        Button("Remove", systemImage: "trash", role: .destructive) {
+                            Task { await store.remove(item) }
                         }
                     }
                     .contextMenu {
@@ -49,28 +48,50 @@ struct HistoryView: View {
     }
 }
 
-struct HistoryEditMenu: View {
-    /// An icon wherever it is, like the buttons beside it; a word is wider, and in the folded
-    /// bar pushes the buttons after it into an overflow menu.
+/// Clearing history by scope, each its own button. Each asks in a menu at the button, where a tap
+/// anywhere else cancels; downloaded files are kept either way.
+struct HistoryClearButtons: View {
     @Environment(AppStore.self) private var store
 
     var body: some View {
-        Menu {
-            Button("Clear Completed", systemImage: "checkmark.circle") { clear(.completed) }
+        Group {
+            button(.completed, systemImage: "checkmark.circle")
                 .disabled(!store.history.contains { $0.isCompleted })
-            Button("Clear Failed", systemImage: "xmark.octagon") { clear(.failed) }
+            button(.failed, systemImage: "xmark.octagon")
                 .disabled(!store.history.contains { $0.isFailed })
-            Divider()
-            Button("Clear All History", systemImage: "trash", role: .destructive) { clear(.all) }
+            button(.all, systemImage: "trash")
                 .disabled(store.history.isEmpty)
-        } label: {
-            Label("Edit", systemImage: "pencil")
         }
         .disabled(!store.isConfigured)
     }
 
-    /// Only history entries go; downloaded files are kept, so no confirmation.
-    private func clear(_ scope: HistoryClearScope) {
-        Task { await store.clearHistory(scope) }
+    private func button(_ scope: HistoryClearScope, systemImage: String) -> some View {
+        Menu {
+            Section(scope.question) {
+                Button(scope.action, systemImage: "trash", role: .destructive) {
+                    Task { await store.clearHistory(scope) }
+                }
+            }
+        } label: {
+            Label(scope.action, systemImage: systemImage)
+        }
+    }
+}
+
+private extension HistoryClearScope {
+    var question: String {
+        switch self {
+        case .completed: "Clear completed downloads from history? Their files are kept."
+        case .failed: "Clear failed downloads from history? Their files are kept."
+        case .all: "Clear all history? Downloaded files are kept."
+        }
+    }
+
+    var action: String {
+        switch self {
+        case .completed: "Clear Completed"
+        case .failed: "Clear Failed"
+        case .all: "Clear All History"
+        }
     }
 }

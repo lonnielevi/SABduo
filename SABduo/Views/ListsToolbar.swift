@@ -18,7 +18,7 @@ private struct ListsToolbar: ViewModifier {
     }
 }
 
-/// The pages' controls above the tab bar, unfolded in portrait, like Music's player: edit, plus
+/// The pages' controls above the tab bar, unfolded in portrait, like Music's player: clearing, plus
 /// the queue's pause, speed limit and add; or Settings' lock and save.
 struct ListsAccessory: View {
     @Environment(AppStore.self) private var store
@@ -29,12 +29,12 @@ struct ListsAccessory: View {
             Group {
                 switch store.listPane {
                 case .queue:
-                    QueueEditMenu()
+                    ClearQueueButton()
                     GlobalControls()
                     Button("Add NZB", systemImage: "plus", action: actions.addNZB)
                         .disabled(!store.isConfigured)
                 case .history:
-                    HistoryEditMenu()
+                    HistoryClearButtons()
                 case .settings:
                     if let controls = store.settingsControls { SettingsButtons(controls: controls) }
                 }
@@ -67,12 +67,10 @@ struct ListsRailItems: ToolbarContent {
            !store.searchFullScreen || store.selectedJobID != nil {
             // Their own group, apart from the trailing pane's buttons above them.
             ToolbarSpacer(.fixed, placement: .topBarTrailing)
-            ToolbarItem(placement: .topBarTrailing) {
-                if store.listPane == .queue {
-                    QueueEditMenu()
-                } else {
-                    HistoryEditMenu()
-                }
+            if store.listPane == .queue {
+                ToolbarItem(placement: .topBarTrailing) { ClearQueueButton() }
+            } else {
+                ToolbarItemGroup(placement: .topBarTrailing) { HistoryClearButtons() }
             }
             if store.listPane == .queue {
                 ToolbarItemGroup(placement: .topBarTrailing) {

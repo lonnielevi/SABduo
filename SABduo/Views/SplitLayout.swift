@@ -175,7 +175,7 @@ struct SplitLayout: View {
     /// The download stats, on every page of the list pane. The tab bars have no room for the
     /// server's light beside Queue, so they carry it.
     private var stats: some View {
-        QueueStatsCard(fill: Color(.secondarySystemBackground), showsServerLight: true)
+        QueueStatsCard(showsServerLight: true)
             .padding(.horizontal)
     }
 

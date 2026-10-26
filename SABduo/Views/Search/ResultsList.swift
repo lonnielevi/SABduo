@@ -14,7 +14,7 @@ struct ResultsList: View {
                     Task { await store.send(result) }
                 }
             }
-            .swipeActions(edge: .leading) {
+            .swipeActions(allowsFullSwipe: false) {
                 Button("Send", systemImage: "arrow.down.circle") {
                     Task { await store.send(result) }
                 }

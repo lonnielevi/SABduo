@@ -9,6 +9,9 @@ extension EnvironmentValues {
     @Entry var usesBottomBar = true
     /// Unfolded, the list pane is white, so its rows are grey to stand out; nil keeps the default.
     @Entry var listRowFill: Color? = nil
+    /// Room kept clear at the bottom of a pane for what floats over it, such as search's field,
+    /// which an empty pane's message stays above.
+    @Entry var floatingBottomInset: CGFloat = 0
 }
 
 extension View {
@@ -30,17 +33,26 @@ extension View {
 private struct EmptyStatePlacement: ViewModifier {
     /// Where the top of the message goes, as a share of the window's height.
     private static let height: CGFloat = 0.3
-    @State private var inset: CGFloat = 0
+    @Environment(\.floatingBottomInset) private var floatingBottomInset
+    @State private var frame = CGRect.zero
+    @State private var messageHeight: CGFloat = 0
 
     func body(content: Content) -> some View {
         content
             .fixedSize(horizontal: false, vertical: true)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { messageHeight = $0 }
             .padding(.top, inset)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             // Read again whenever the pane moves or resizes, which every rotation and fold does.
-            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
-                inset = max(UIApplication.windowHeight * Self.height - frame.minY, 0)
-            }
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame = $0 }
+    }
+
+    /// Down to the set height, but no lower than leaves the message clear of the bottom: on a short
+    /// screen, folded in landscape, it rises to fit.
+    private var inset: CGFloat {
+        let wanted = UIApplication.windowHeight * Self.height - frame.minY
+        let room = frame.height - floatingBottomInset - messageHeight
+        return max(min(wanted, room), 0)
     }
 }
 

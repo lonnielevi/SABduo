@@ -20,13 +20,12 @@ struct QueueView: View {
                     }
                     .foregroundStyle(.primary)
                     .listRowBackground(highlightsSelection && store.selectedJobID == job.id ? Color.accentColor.opacity(0.15) : rowFill)
-                    .swipeActions(edge: .leading) {
+                    // Swipe left only, clear of the back gesture; the gentler action at the edge.
+                    .swipeActions(allowsFullSwipe: false) {
                         Button(job.isPaused ? "Resume" : "Pause", systemImage: job.isPaused ? "play.fill" : "pause.fill") {
                             Task { await store.togglePause(job) }
                         }
                         .tint(job.isPaused ? .green : .orange)
-                    }
-                    .swipeActions(edge: .trailing) {
                         Button("Delete", systemImage: "trash", role: .destructive) {
                             pendingDelete = job
                         }
@@ -55,24 +54,9 @@ struct QueueView: View {
                 .emptyStatePlacement()
             }
         }
-        .environment(\.editMode, Binding(
-            get: { store.isReorderingQueue ? .active : .inactive },
-            set: { store.isReorderingQueue = $0.isEditing }
-        ))
         .refreshable { await store.refresh() }
         .navigationTitle("Queue")
         .listsToolbar()
-        .confirmationDialog(
-            "Clear the queue?",
-            isPresented: Bindable(store).confirmingClearQueue,
-            titleVisibility: .visible
-        ) {
-            Button("Delete All \(store.slots.count) Jobs and Files", role: .destructive) {
-                Task { await store.clearQueue() }
-            }
-        } message: {
-            Text("Every job in the queue and its downloaded files will be removed.")
-        }
         .confirmationDialog(
             "Delete \(pendingDelete?.filename ?? "job")?",
             isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
@@ -90,86 +74,103 @@ struct QueueView: View {
 
 /// The queue's stats in a card, heading every page above the page picker.
 struct QueueStatsCard: View {
-    /// Stands out from what's behind it: grey on the unfolded list pane's white, white on grey.
-    var fill = Color(.secondarySystemGroupedBackground)
+    @Environment(AppStore.self) private var store
     /// Folded, the tab bar can't show the server's light beside Queue, so the stats carry it.
     var showsServerLight = false
 
-    static let height: CGFloat = 56
+    /// The speed line's height, for lining it up with the status bar's clock.
+    static let height: CGFloat = 41
 
     var body: some View {
-        HStack {
-            QueueSummary()
-            if showsServerLight { ServerConnectionLight() }
+        // Only while there's something to download; an empty queue says so itself.
+        if let queue = store.queue, queue.jobCount > 0 {
+            QueueSummary(showsServerLight: showsServerLight)
+                // In line with the cards' edges, as a large title is.
+                .padding(.horizontal, 4)
         }
-        .padding(.horizontal, 20)
-        .frame(height: Self.height)
-        .background(fill, in: .rect(cornerRadius: 24))
     }
 }
 
-/// Overall speed, remaining size, jobs and time left for the whole queue.
+/// The queue's stats, styled as a large title: the speed, and beneath it what's left, the jobs
+/// and the time. Tapping the speed steps through its units; tapping the time swaps the countdown
+/// for when it'll finish.
 struct QueueSummary: View {
     @Environment(AppStore.self) private var store
     @AppStorage(SpeedUnit.storageKey) private var unit: SpeedUnit = .megabytes
     @AppStorage(TimeLeftStyle.storageKey) private var timeStyle: TimeLeftStyle = .countdown
+    var showsServerLight = false
 
     var body: some View {
-        // One size for every stat: the largest at which they all fit, rather than each shrinking
-        // on its own and ending up a different size from its neighbours.
-        ViewThatFits(in: .horizontal) {
-            stats.font(.headline)
-            stats.font(.subheadline.weight(.semibold))
-            stats.font(.footnote.weight(.semibold))
+        let queue = store.queue
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.snappy) { unit = unit.next }
+            } label: {
+                Text(queue.map { $0.paused ? "Paused" : unit.format($0.bytesPerSecond) } ?? "–")
+                    .font(.largeTitle.bold())
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .contentTransition(.numericText())
+                    .frame(height: QueueStatsCard.height, alignment: .leading)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Speed")
+            .accessibilityHint("Shows the speed in \(unit.next.name.lowercased())")
+
+            ViewThatFits(in: .horizontal) {
+                details(queue).font(.subheadline)
+                details(queue).font(.footnote)
+            }
+            .foregroundStyle(.secondary)
         }
         .monospacedDigit()
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// Each stat as wide as it needs, spread evenly across the card.
-    private var stats: some View {
-        let queue = store.queue
-        return HStack(spacing: 0) {
-            // Tapping the speed steps through the units; Settings picks one outright.
-            Button {
-                withAnimation(.snappy) { unit = unit.next }
-            } label: {
-                stat(
-                    queue.map { $0.paused ? "Paused" : unit.format($0.bytesPerSecond) } ?? "–",
-                    caption: "Speed"
-                )
-                .contentShape(.rect)
+    /// "53.6 GB left · 6 jobs · 1h 16m", and the server's light.
+    private func details(_ queue: Queue?) -> some View {
+        HStack(spacing: 6) {
+            Text(queue.map { $0.sizeLeft.isEmpty ? "Nothing left" : "\($0.sizeLeft) left" } ?? "–")
+            Text("·")
+            Text(queue.map { $0.jobCount == 1 ? "1 job" : "\($0.jobCount) jobs" } ?? "–")
+            if queue?.secondsLeft != nil {
+                Text("·")
+                Button {
+                    withAnimation(.snappy) { timeStyle = timeStyle.other }
+                } label: {
+                    timeLeft(queue).contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Shows the \(timeStyle.other.name.lowercased())")
             }
-            .buttonStyle(.plain)
-            .accessibilityHint("Shows the speed in \(unit.next.name.lowercased())")
-            Spacer(minLength: 12)
-            stat(queue?.sizeLeft.nonEmpty ?? "–", caption: "Queued")
-            Spacer(minLength: 12)
-            stat(queue.map { $0.jobCount == 1 ? "1 Job" : "\($0.jobCount) Jobs" } ?? "–", caption: "Jobs")
-            Spacer(minLength: 12)
-            // Tapping swaps the countdown for the time it'll finish, and back.
-            Button {
-                withAnimation(.snappy) { timeStyle = timeStyle.other }
-            } label: {
-                timeLeft(queue).contentShape(.rect)
-            }
-            .buttonStyle(.plain)
-            .accessibilityHint("Shows the \(timeStyle.other.name.lowercased())")
             if let limit = queue?.speedLimitBytes, limit > 0 {
-                Spacer(minLength: 12)
-                stat(unit.format(Double(limit)), caption: "Limit")
+                Text("·")
+                Text("Limit \(unit.format(Double(limit)))")
             }
+            if showsServerLight { ServerConnectionLight() }
         }
+        .lineLimit(1)
+        .fixedSize()
+        .contentTransition(.numericText())
     }
 
     @ViewBuilder
     private func timeLeft(_ queue: Queue?) -> some View {
         switch timeStyle {
         case .countdown:
-            stat(queue.flatMap { $0.secondsLeft != nil ? $0.timeLeft : nil } ?? "–", caption: "Finishes In")
+            Text(countdown(queue) ?? "–").accessibilityLabel("Finishes in")
         case .finishTime:
-            stat(finishTime(queue) ?? "–", caption: "Finishes At")
+            Text(finishTime(queue) ?? "–").accessibilityLabel("Finishes at")
         }
+    }
+
+    /// "1h 16m", or "2d 3h" for a long queue, or seconds under a minute.
+    private func countdown(_ queue: Queue?) -> String? {
+        guard let seconds = queue?.secondsLeft else { return nil }
+        let units: Set<Duration.UnitsFormatStyle.Unit> = seconds >= 86_400 ? [.days, .hours]
+            : seconds >= 60 ? [.hours, .minutes] : [.seconds]
+        return Duration.seconds(seconds).formatted(.units(allowed: units, width: .narrow, maximumUnitCount: 2))
     }
 
     /// When the queue will finish at the current speed: "4:12 PM", or "Sat 4:12 PM" after today.
@@ -180,46 +181,27 @@ struct QueueSummary: View {
             ? finish.formatted(date: .omitted, time: .shortened)
             : finish.formatted(.dateTime.weekday(.abbreviated).hour().minute())
     }
-
-    private func stat(_ value: String, caption: String) -> some View {
-        // Values alone, on one line, in the row's font. The caption is for VoiceOver.
-        Text(value)
-            .lineLimit(1)
-            .fixedSize()
-            .contentTransition(.numericText())
-            .accessibilityLabel(caption)
-            .accessibilityValue(value)
-    }
 }
 
 nonisolated extension String {
     var nonEmpty: String? { isEmpty ? nil : self }
 }
 
-struct QueueEditMenu: View {
-    /// An icon wherever it is, like the buttons beside it; a word is wider, and in the folded
-    /// bar pushes the buttons after it into an overflow menu.
+/// Clears the queue, after asking in a menu at the button: a tap anywhere else cancels. Jobs
+/// reorder by pressing and holding one, then dragging it.
+struct ClearQueueButton: View {
     @Environment(AppStore.self) private var store
 
     var body: some View {
-        if store.isReorderingQueue {
-            Button("Done") { withAnimation { store.isReorderingQueue = false } }
-            .bold()
-        } else {
-            Menu {
-                Button("Reorder Queue") {
-                    withAnimation { store.isReorderingQueue = true }
+        Menu {
+            Section("Every job in the queue and its downloaded files will be removed.") {
+                Button("Delete All \(store.slots.count) Jobs and Files", systemImage: "trash", role: .destructive) {
+                    Task { await store.clearQueue() }
                 }
-                .disabled(store.slots.count < 2)
-                Divider()
-                Button("Clear Queue…", systemImage: "trash", role: .destructive) {
-                    store.confirmingClearQueue = true
-                }
-                .disabled(store.slots.isEmpty)
-            } label: {
-                Label("Edit", systemImage: "pencil")
             }
-            .disabled(!store.isConfigured)
+        } label: {
+            Label("Clear Queue", systemImage: "trash")
         }
+        .disabled(!store.isConfigured || store.slots.isEmpty)
     }
 }

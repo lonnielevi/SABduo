@@ -210,8 +210,15 @@ struct ServerSettingsView: View {
                 } label: {
                     LabeledContent(indexer.name, value: indexer.apiURL?.host() ?? "")
                 }
+                // As everywhere, a swipe only offers it; deleting takes a tap.
+                .swipeActions(allowsFullSwipe: false) {
+                    Button("Delete", systemImage: "trash", role: .destructive) {
+                        if let index = store.indexers.firstIndex(of: indexer) {
+                            store.deleteIndexers(at: IndexSet(integer: index))
+                        }
+                    }
+                }
             }
-            .onDelete { store.deleteIndexers(at: $0) }
             NavigationLink {
                 IndexerEditView(indexer: Indexer(name: "", address: ""))
             } label: {

@@ -7,7 +7,7 @@ struct HistoryRow: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline) {
                 Image(systemName: icon).foregroundStyle(tint)
-                Text(item.name)
+                Text(item.name.releaseNameWrapping)
                     .font(.body.weight(.medium))
                     .lineLimit(2)
             }

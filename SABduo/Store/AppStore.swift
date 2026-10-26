@@ -45,10 +45,6 @@ final class AppStore {
     /// Bumped by `showSettings()`. Folded, Search is a tab apart from the pages, so the page
     /// alone may already say Settings while another tab shows.
     private(set) var settingsRequests = 0
-    /// Queue edit state lives here rather than in `QueueView` so its Edit menu can sit in either
-    /// pane: unfolded in landscape, the queue's controls join the side rail beside search.
-    var isReorderingQueue = false
-    var confirmingClearQueue = false
 
     private(set) var indexers: [Indexer]
     private var indexerKeys: [Indexer.ID: String]

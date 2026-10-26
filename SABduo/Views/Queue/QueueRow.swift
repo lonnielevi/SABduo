@@ -9,12 +9,14 @@ struct QueueRow: View {
                 if job.isPaused {
                     Image(systemName: "pause.circle.fill").foregroundStyle(.orange)
                 }
-                Text(job.filename)
+                Text(job.filename.releaseNameWrapping)
                     .font(.body.weight(.medium))
                     .lineLimit(2)
-                Spacer(minLength: 0)
+                // A gap before the badge; without one, the name runs to the edge.
+                Spacer(minLength: job.priority == .normal ? 0 : 8)
                 if job.priority != .normal {
                     PriorityBadge(priority: job.priority)
+                        .fixedSize()
                 }
             }
             ProgressView(value: job.progress)
