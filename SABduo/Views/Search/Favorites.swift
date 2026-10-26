@@ -1,18 +1,28 @@
 import SwiftUI
 
-/// Stars the search a feed is showing.
-struct FavoriteButton: View {
+/// Header over a search's results, with the star that saves it. It lives in the list rather than
+/// the toolbar, since an iPhone hides toolbar buttons while the search field is active.
+struct ResultsHeader: View {
     @Environment(AppStore.self) private var store
     let query: String
     let category: IndexerCategory?
 
     var body: some View {
         let isFavorite = store.search.favorite(query: query, category: category) != nil
-        Button(isFavorite ? "Remove from Favorites" : "Add to Favorites", systemImage: isFavorite ? "star.fill" : "star") {
-            store.search.toggleFavorite(query: query, category: category)
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Results for “\(query)”")
+                .lineLimit(1)
+            // On a line of its own, so the query has the whole width.
+            Button {
+                store.search.toggleFavorite(query: query, category: category)
+            } label: {
+                Label(isFavorite ? "Favorited" : "Favorite this search", systemImage: isFavorite ? "star.fill" : "star")
+            }
+            .buttonStyle(.borderless)
+            .tint(isFavorite ? .yellow : nil)
+            .accessibilityLabel(isFavorite ? "Remove from Favorites" : "Add to Favorites")
+            .sensoryFeedback(.selection, trigger: isFavorite)
         }
-        .tint(isFavorite ? .yellow : nil)
-        .sensoryFeedback(.selection, trigger: isFavorite)
     }
 }
 
@@ -24,31 +34,7 @@ struct FavoriteRow: View {
             Text(saved.query)
             Text(saved.category?.path ?? "All Categories")
         } icon: {
-            Image(systemName: "star.fill").foregroundStyle(.yellow)
-        }
-    }
-}
-
-/// Favorites offered while typing in a search field; tapping one runs it.
-struct FavoriteSuggestions: View {
-    @Environment(AppStore.self) private var store
-    let typed: String
-    /// Limit to one category's favorites (a browse screen), or nil for all of them.
-    var category: IndexerCategory?
-    let run: (SavedSearch) -> Void
-
-    var body: some View {
-        let needle = typed.trimmingCharacters(in: .whitespaces)
-        let matches = store.search.favorites.filter { saved in
-            (category == nil || saved.category?.id == category?.id)
-                && (needle.isEmpty || saved.query.localizedCaseInsensitiveContains(needle))
-        }
-        if !matches.isEmpty {
-            Section("Favorites") {
-                ForEach(matches) { saved in
-                    Button { run(saved) } label: { FavoriteRow(saved: saved) }
-                }
-            }
+            Image(systemName: "star.fill").foregroundStyle(Color.accentColor)
         }
     }
 }

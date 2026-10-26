@@ -17,18 +17,23 @@
 			</array>
 		</dict>
 	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
 	<key>UTImportedTypeDeclarations</key>
 	<array>
 		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>com.newzbin.nzb</string>
-			<key>UTTypeDescription</key>
-			<string>NZB File</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>public.xml</string>
 				<string>public.data</string>
 			</array>
+			<key>UTTypeDescription</key>
+			<string>NZB File</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.newzbin.nzb</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -42,14 +47,5 @@
 			</dict>
 		</dict>
 	</array>
-	<key>LSSupportsOpeningDocumentsInPlace</key>
-	<false/>
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSAllowsArbitraryLoads</key>
-		<true/>
-	</dict>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>SABduo connects to your SABnzbd server on your local network.</string>
 </dict>
 </plist>

@@ -18,6 +18,12 @@ nonisolated enum SABnzbdError: LocalizedError, Equatable {
     }
 }
 
+nonisolated enum HistoryClearScope: String, Sendable {
+    case all
+    case failed
+    case completed
+}
+
 /// Thin wrapper over SABnzbd's `api` endpoint. Runs off the main actor.
 nonisolated struct SABnzbdClient: Sendable {
     let apiURL: URL
@@ -33,6 +39,18 @@ nonisolated struct SABnzbdClient: Sendable {
     func history(limit: Int = 50) async throws -> History {
         try await decode(HistoryResponse.self, ["mode": "history", "limit": String(limit)]).history
     }
+
+    /// What SABnzbd has logged as warnings and errors, newest first.
+    func warnings() async throws -> [ServerWarning] {
+        let data = try await get(["mode": "warnings"])
+        try Self.checkStatus(data)
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let list = object["warnings"] as? [Any]
+        else { throw SABnzbdError.invalidResponse }
+        return list.compactMap(ServerWarning.init).reversed()
+    }
+
+    func clearWarnings() async throws { try await send(["mode": "warnings", "name": "clear"]) }
 
     // MARK: Global
 
@@ -60,6 +78,11 @@ nonisolated struct SABnzbdClient: Sendable {
         try await send(["mode": "queue", "name": "delete", "value": id, "del_files": deleteFiles ? "1" : "0"])
     }
 
+    /// `value=all` empties the queue.
+    func deleteAllJobs(deleteFiles: Bool = true) async throws {
+        try await send(["mode": "queue", "name": "delete", "value": "all", "del_files": deleteFiles ? "1" : "0"])
+    }
+
     func setPriority(_ id: String, _ priority: Priority) async throws {
         try await send(["mode": "queue", "name": "priority", "value": id, "value2": String(priority.rawValue)])
     }
@@ -72,6 +95,11 @@ nonisolated struct SABnzbdClient: Sendable {
     // MARK: History
 
     func retry(_ id: String) async throws { try await send(["mode": "retry", "value": id]) }
+
+    /// SABnzbd accepts "all", "failed" or "completed" in place of a job ID.
+    func clearHistory(_ scope: HistoryClearScope) async throws {
+        try await send(["mode": "history", "name": "delete", "value": scope.rawValue])
+    }
 
     func deleteHistory(_ id: String, deleteFiles: Bool = false) async throws {
         try await send(["mode": "history", "name": "delete", "value": id, "del_files": deleteFiles ? "1" : "0"])
@@ -169,4 +197,28 @@ nonisolated struct SABnzbdClient: Sendable {
 
 private nonisolated extension Data {
     mutating func append(_ string: String) { append(Data(string.utf8)) }
+}
+
+/// A warning or error from SABnzbd's log. Newer versions send objects; older ones a string of
+/// "date\ntype\nmessage".
+nonisolated struct ServerWarning: Identifiable, Hashable, Sendable {
+    let id = UUID()
+    let text: String
+    let isError: Bool
+    let date: Date?
+
+    init?(_ value: Any) {
+        if let object = value as? [String: Any], let text = object["text"] as? String {
+            self.text = text
+            isError = (object["type"] as? String)?.uppercased() == "ERROR"
+            date = (object["time"] as? Double).map { Date(timeIntervalSince1970: $0) }
+        } else if let string = value as? String {
+            let lines = string.split(separator: "\n", maxSplits: 2).map(String.init)
+            text = lines.last ?? string
+            isError = lines.count == 3 && lines[1].uppercased() == "ERROR"
+            date = nil
+        } else {
+            return nil
+        }
+    }
 }

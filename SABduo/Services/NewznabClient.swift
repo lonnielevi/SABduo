@@ -44,6 +44,16 @@ nonisolated struct NewznabClient: Sendable {
         try ResultsParser.parse(try await fetch(["t": "details", "id": id, "extended": "1"])).results.first
     }
 
+    /// The release's NFO text, or nil when it has none. Indexers send it as plain text or in an
+    /// RSS item's description.
+    func nfo(id: String) async throws -> String? {
+        let data = try await fetch(["t": "getnfo", "id": id])
+        let text = String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("<") else { return trimmed.nonEmpty }
+        return try NFOParser.parse(data)
+    }
+
     func caps() async throws -> IndexerCaps {
         try CapsParser.parse(try await fetch(["t": "caps"]))
     }
@@ -173,7 +183,8 @@ nonisolated final class ResultsParser: NSObject, XMLParserDelegate {
             size: size,
             category: item["category"] ?? "",
             description: item["description"]?.nonEmpty,
-            attributes: attrs
+            attributes: attrs,
+            indexed: item["pubDate"].flatMap(Self.dateFormatter.date(from:))
         )
     }
 }
@@ -267,6 +278,44 @@ nonisolated final class CapsParser: NSObject, XMLParserDelegate {
             currentCategory = nil
         default:
             break
+        }
+    }
+}
+
+/// Pulls an NFO out of a `t=getnfo` RSS reply: the first item's description.
+nonisolated final class NFOParser: NSObject, XMLParserDelegate {
+    private var text = ""
+    private var inItem = false
+    private var nfo: String?
+    private var error: NewznabError?
+
+    static func parse(_ data: Data) throws -> String? {
+        let delegate = NFOParser()
+        let parser = XMLParser(data: data)
+        parser.delegate = delegate
+        parser.parse()
+        if let error = delegate.error { throw error }
+        return delegate.nfo
+    }
+
+    func parser(_ parser: XMLParser, didStartElement name: String, namespaceURI: String?, qualifiedName: String?, attributes: [String: String]) {
+        text = ""
+        switch name {
+        case "item": inItem = true
+        case "error":
+            error = .server(code: Int(attributes["code"] ?? "") ?? 0, description: attributes["description"] ?? "Indexer error.")
+            parser.abortParsing()
+        default: break
+        }
+    }
+
+    func parser(_ parser: XMLParser, foundCharacters string: String) { text += string }
+
+    func parser(_ parser: XMLParser, foundCDATA block: Data) { text += String(decoding: block, as: UTF8.self) }
+
+    func parser(_ parser: XMLParser, didEndElement name: String, namespaceURI: String?, qualifiedName: String?) {
+        if inItem, name == "description", nfo == nil {
+            nfo = text.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
         }
     }
 }

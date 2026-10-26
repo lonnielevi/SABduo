@@ -34,7 +34,7 @@ struct GlobalControls: View {
         } label: {
             Label("Speed Limit", systemImage: limit > 0 ? "gauge.with.dots.needle.33percent" : "gauge.with.dots.needle.100percent")
         }
-        .tint(limit > 0 ? .orange : nil)
+        .tint(limit > 0 ? .orange : .primary)
         .disabled(!store.isConfigured)
         .alert("Speed Limit", isPresented: $showingCustomLimit) {
             TextField("MB/s", text: $customLimit)

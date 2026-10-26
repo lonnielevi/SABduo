@@ -12,12 +12,33 @@ final class AppStore {
     private(set) var history: [HistorySlot] = []
     private(set) var lastUpdated: Date?
     var errorMessage: String?
+    /// Whether the last poll reached the server; nil until one finishes. Kept apart from
+    /// `errorMessage`, which other failures (adding an NZB, say) also set.
+    private(set) var isConnected: Bool?
     /// Brief confirmation shown after adding an NZB.
     var notice: String?
     /// Job shown in the detail pane (unfolded) or pushed (folded).
     var selectedJobID: QueueSlot.ID?
-    /// What sits beside the queue: the trailing pane when unfolded, the selected tab when folded.
-    var secondaryPane: SecondaryPane = .history
+    /// Which page the leading side shows when unfolded; also the tab to land on when folding.
+    var listPane: ListPane = .queue {
+        didSet { listPaneMovedForward = ListPane.allCases.firstIndex(of: listPane)! > ListPane.allCases.firstIndex(of: oldValue)! }
+    }
+    /// Which way the leading side last moved through its pages, so the new page slides in from that side.
+    private(set) var listPaneMovedForward = true
+    /// Unfolded, search can take the whole screen; the split comes back when this is cleared.
+    var searchFullScreen = false
+    /// Settings shows connection errors in its form, clear of its buttons, so the app's banner
+    /// leaves them out while it's on screen.
+    var settingsOnScreen = false
+    /// Settings' lock and save while it's on screen, for the tab bar's accessory outside the page.
+    var settingsControls: SettingsControls?
+    /// Bumped by `showSettings()`. Folded, Search is a tab apart from the pages, so the page
+    /// alone may already say Settings while another tab shows.
+    private(set) var settingsRequests = 0
+    /// Queue edit state lives here rather than in `QueueView` so its Edit menu can sit in either
+    /// pane: unfolded in landscape, the queue's controls join the side rail beside search.
+    var isReorderingQueue = false
+    var confirmingClearQueue = false
 
     private(set) var indexers: [Indexer]
     private var indexerKeys: [Indexer.ID: String]
@@ -48,8 +69,20 @@ final class AppStore {
             indexer.name = env["SABDUO_INDEXER_NAME"] ?? indexer.name
             saveIndexer(indexer, apiKey: key)
         }
-        if env["SABDUO_PANE"] == "search" { secondaryPane = .search }
+        if env["SABDUO_PANE"] == "history" { listPane = .history }
+        if env["SABDUO_PANE"] == "settings" { listPane = .settings }
         #endif
+        // First launch: straight to setting up the server.
+        if !isConfigured { listPane = .settings }
+    }
+
+    /// Settings is a page: the leading pane's when unfolded, a tab when folded.
+    func showSettings() {
+        withAnimation {
+            searchFullScreen = false
+            listPane = .settings
+        }
+        settingsRequests += 1
     }
 
     var isConfigured: Bool { client != nil }
@@ -77,6 +110,7 @@ final class AppStore {
         history = []
         selectedJobID = nil
         errorMessage = nil
+        isConnected = nil
         generation += 1
     }
 
@@ -149,10 +183,12 @@ final class AppStore {
             queue = newQueue
             history = newHistory.slots
             lastUpdated = .now
+            isConnected = true
             errorMessage = nil
             if let selectedJobID, job(selectedJobID) == nil { self.selectedJobID = nil }
         } catch {
             guard !Self.isCancellation(error), started == generation else { return }
+            isConnected = false
             errorMessage = error.localizedDescription
         }
     }
@@ -208,6 +244,15 @@ final class AppStore {
         }
     }
 
+    func clearQueue() async {
+        await mutate({ store in
+            store.queue?.slots.removeAll()
+            store.selectedJobID = nil
+        }) { client in
+            try await client.deleteAllJobs()
+        }
+    }
+
     /// Bridges `List.onMove` to SABnzbd's `mode=switch`, which moves one job to a target index.
     func move(fromOffsets source: IndexSet, toOffset destination: Int) async {
         guard source.count == 1, let from = source.first, slots.indices.contains(from) else { return }
@@ -223,6 +268,18 @@ final class AppStore {
 
     func retry(_ item: HistorySlot) async {
         await mutate(nil) { client in try await client.retry(item.id) }
+    }
+
+    func clearHistory(_ scope: HistoryClearScope) async {
+        await mutate({ store in
+            switch scope {
+            case .all: store.history.removeAll { $0.isCompleted || $0.isFailed }
+            case .failed: store.history.removeAll { $0.isFailed }
+            case .completed: store.history.removeAll { $0.isCompleted }
+            }
+        }) { client in
+            try await client.clearHistory(scope)
+        }
     }
 
     func remove(_ item: HistorySlot) async {
@@ -275,7 +332,9 @@ final class AppStore {
     }
 }
 
-enum SecondaryPane: Hashable {
+enum ListPane: CaseIterable, Hashable {
+    case queue
     case history
-    case search
+    case settings
 }
+

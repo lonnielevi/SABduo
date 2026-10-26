@@ -4,6 +4,8 @@ import SwiftUI
 /// (or is on iOS 27.0, before `onHingeChange` existed).
 enum HingeState: Equatable {
     case closed
+    /// Partly open, held like a book.
+    case book
     case open
 }
 
@@ -16,7 +18,13 @@ private struct HingeReader: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 27.1, *) {
             content.onHingeChange { _, context in
-                state = context.hinge.map { $0.status == .closed ? .closed : .open }
+                state = context.hinge.map {
+                    switch $0.status {
+                    case .closed: .closed
+                    case .partiallyOpen: .book
+                    default: .open
+                    }
+                }
             }
         } else {
             content

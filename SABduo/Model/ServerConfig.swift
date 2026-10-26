@@ -2,8 +2,8 @@ import Foundation
 
 /// Connection settings. Everything except the API key, which lives in the Keychain.
 nonisolated struct ServerConfig: Codable, Equatable, Sendable {
-    var host: String = ""
-    var port: Int = 8080
+    var host: String = "172.21.1.2"
+    var port: Int = 8085
     var useHTTPS: Bool = false
     /// SABnzbd's `url_base`; "/sabnzbd" by default, empty behind some reverse proxies.
     var urlBase: String = "/sabnzbd"

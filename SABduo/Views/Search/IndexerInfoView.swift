@@ -3,7 +3,6 @@ import SwiftUI
 /// What an indexer reports about itself through `t=caps`, plus the usage it last reported.
 struct IndexerInfoView: View {
     @Environment(AppStore.self) private var store
-    @Environment(\.rootActions) private var actions
     let indexerID: Indexer.ID
 
     var body: some View {
@@ -125,7 +124,11 @@ struct IndexerInfoView: View {
         }
 
         Section {
-            Button("Edit Indexer…", systemImage: "gearshape", action: actions.showSettings)
+            NavigationLink {
+                IndexerEditView(indexer: indexer)
+            } label: {
+                Label("Edit Indexer", systemImage: "pencil")
+            }
         }
     }
 

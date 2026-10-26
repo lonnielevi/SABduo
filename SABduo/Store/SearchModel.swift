@@ -9,7 +9,6 @@ enum SearchRoute: Hashable {
     /// Latest releases in a category (nil = everything), searchable within it.
     case browse(IndexerCategory?)
     case release(SearchResult)
-    case indexerInfo(Indexer.ID)
 }
 
 enum CapsState {
@@ -24,14 +23,26 @@ enum CapsState {
 final class SearchModel {
     private(set) var indexerID: Indexer.ID?
     var path: [SearchRoute] = []
+    /// The search field is open: focused, with the keyboard up.
+    var fieldOpen = false
     private(set) var caps: [Indexer.ID: CapsState] = [:]
+    /// Whether the indexer answered its latest request, caps or search; missing until one does.
+    private(set) var reachable: [Indexer.ID: Bool] = [:]
     /// Latest usage the indexer reported, from caps or a results page.
     private(set) var apiLimits: [Indexer.ID: APILimits] = [:]
-    private(set) var sentIDs: Set<SearchResult.ID> = []
+    /// Releases already handed to SABnzbd, kept across launches so a resend is a choice, not an accident.
+    private(set) var sentIDs: Set<SearchResult.ID> = Set(UserDefaults.standard.stringArray(forKey: SearchModel.sentKey) ?? [])
     /// Shared across indexers: Newznab category IDs are largely standard.
     private(set) var favorites: [SavedSearch] = SearchModel.loadFavorites()
+    /// Top-level categories left off the search home screen, and the order the rest go in. Shared
+    /// across indexers, like favorites.
+    private(set) var hiddenCategoryIDs: Set<Int> = Set(UserDefaults.standard.array(forKey: SearchModel.hiddenCategoriesKey) as? [Int] ?? [])
+    private var categoryOrder: [Int] = UserDefaults.standard.array(forKey: SearchModel.categoryOrderKey) as? [Int] ?? []
+    /// Favorites left off the search home screen.
+    private(set) var hiddenFavoriteIDs: Set<SavedSearch.ID> = Set((UserDefaults.standard.stringArray(forKey: SearchModel.hiddenFavoritesKey) ?? []).compactMap(UUID.init))
 
     /// Created lazily while views render, so not observed; `indexerID` changes cover invalidation.
+    @ObservationIgnored private var capsTasks: [Indexer.ID: Task<Void, Never>] = [:]
     @ObservationIgnored private var feeds: [FeedKey: ResultFeed] = [:]
 
     private enum FeedKey: Hashable {
@@ -52,10 +63,53 @@ final class SearchModel {
         let indexerID = indexerID
         let feed = ResultFeed(category: category) { [weak self] limits in
             guard let self, let indexerID else { return }
-            apiLimits[indexerID] = limits
+            reachable[indexerID] = true
+            if let limits { apiLimits[indexerID] = limits }
+        } onFailure: { [weak self] in
+            guard let self, let indexerID else { return }
+            reachable[indexerID] = false
         }
         feeds[key] = feed
         return feed
+    }
+
+    /// The feed a search typed now applies to: the category open here or nearest above (a release
+    /// searches the list it came from), or everything.
+    var activeFeed: ResultFeed {
+        scope.map { feed(for: $0.category) } ?? homeFeed
+    }
+
+    /// The category the current screen sits in, and where on the path it was opened.
+    private var scope: (index: Int, category: IndexerCategory?)? {
+        for (index, route) in path.enumerated().reversed() {
+            switch route {
+            case .browse(let category): return (index, category)
+            case .category(let category): return (index, category)
+            case .release: continue
+            }
+        }
+        return nil
+    }
+
+    /// Runs a search typed outside a page's own field, showing its results: everything on the home
+    /// screen, a category's in its list of releases, opened from its subcategories if need be.
+    func submit(_ feed: ResultFeed, using client: NewznabClient?) {
+        if feed === homeFeed {
+            path = []
+        } else if let scope, feed === self.feed(for: scope.category) {
+            path.removeSubrange((scope.index + 1)...)
+            if case .category(let category) = path.last { path.append(.browse(category)) }
+        }
+        feed.load(using: client)
+    }
+
+    /// Back to the categories, from any depth or from home-screen results.
+    var isHome: Bool { path.isEmpty && !homeFeed.hasLoaded && !homeFeed.isLoading }
+
+    func goHome() {
+        path = []
+        homeFeed.query = ""
+        homeFeed.clear()
     }
 
     /// Switches indexer; results and navigation belong to the old one.
@@ -82,22 +136,34 @@ final class SearchModel {
 
     func loadCaps(for indexer: Indexer, client: NewznabClient?, force: Bool = false) async {
         switch caps[indexer.id] {
-        case .loading: return
+        case .loading:
+            await capsTasks[indexer.id]?.value
+            return
         case .loaded where !force: return
         default: break
         }
         guard let client else {
             caps[indexer.id] = .failed("Add an API key for \(indexer.name) in Settings.")
+            reachable[indexer.id] = false
             return
         }
         caps[indexer.id] = .loading
-        do {
-            let loaded = try await client.caps()
-            caps[indexer.id] = .loaded(loaded)
-            if let limits = loaded.apiLimits { apiLimits[indexer.id] = limits }
-        } catch {
-            caps[indexer.id] = .failed(error.localizedDescription)
+        // A task of its own, so the request outlives the view that asked for it: the search screen
+        // restarts its task when the layout rebuilds, and a cancelled load would read as a failure.
+        let task = Task {
+            do {
+                let loaded = try await client.caps()
+                caps[indexer.id] = .loaded(loaded)
+                reachable[indexer.id] = true
+                if let limits = loaded.apiLimits { apiLimits[indexer.id] = limits }
+            } catch {
+                caps[indexer.id] = .failed(error.localizedDescription)
+                reachable[indexer.id] = false
+            }
+            capsTasks[indexer.id] = nil
         }
+        capsTasks[indexer.id] = task
+        await task.value
     }
 
     func loadedCaps(for id: Indexer.ID?) -> IndexerCaps? {
@@ -105,14 +171,33 @@ final class SearchModel {
         return caps
     }
 
-    /// The indexer's own category tree, or the standard Newznab top level if caps aren't available.
+    /// The indexer's own category tree, or the standard Newznab top level if caps aren't available,
+    /// in the order arranged on the home screen. Categories never arranged keep the indexer's order, after the rest.
     func categories(for id: Indexer.ID?) -> [IndexerCategory] {
-        guard let categories = loadedCaps(for: id)?.categories, !categories.isEmpty else { return IndexerCategory.standard }
-        return categories
+        let loaded = loadedCaps(for: id)?.categories ?? []
+        let categories = loaded.isEmpty ? IndexerCategory.standard : loaded
+        let rank = Dictionary(categoryOrder.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+        return categories.enumerated()
+            .sorted { (rank[$0.element.id] ?? categoryOrder.count + $0.offset, $0.offset) < (rank[$1.element.id] ?? categoryOrder.count + $1.offset, $1.offset) }
+            .map(\.element)
+    }
+
+    func moveCategories(_ categories: [IndexerCategory], fromOffsets source: IndexSet, toOffset destination: Int) {
+        var ids = categories.map(\.id)
+        ids.move(fromOffsets: source, toOffset: destination)
+        // Keep the places of categories this indexer doesn't have, for the next one that does.
+        categoryOrder = ids + categoryOrder.filter { !ids.contains($0) }
+        UserDefaults.standard.set(categoryOrder, forKey: Self.categoryOrderKey)
     }
 
     func markSent(_ id: SearchResult.ID) {
-        sentIDs.insert(id)
+        guard sentIDs.insert(id).inserted else { return }
+        // Oldest first, capped so the list doesn't grow forever.
+        var order = UserDefaults.standard.stringArray(forKey: Self.sentKey) ?? []
+        order.append(id)
+        order = Array(order.suffix(Self.sentLimit))
+        sentIDs = Set(order)
+        UserDefaults.standard.set(order, forKey: Self.sentKey)
     }
 
     /// Where the indexer serves pages and covers: caps' `url`, else the API URL minus "/api".
@@ -121,9 +206,33 @@ final class SearchModel {
         return loadedCaps(for: indexer.id)?.siteURL ?? indexer.apiURL?.deletingLastPathComponent()
     }
 
+    func setCategory(_ category: IndexerCategory, hidden: Bool) {
+        if hidden {
+            hiddenCategoryIDs.insert(category.id)
+        } else {
+            hiddenCategoryIDs.remove(category.id)
+        }
+        UserDefaults.standard.set(Array(hiddenCategoryIDs), forKey: Self.hiddenCategoriesKey)
+    }
+
+    func setFavorite(_ saved: SavedSearch, hidden: Bool) {
+        if hidden {
+            hiddenFavoriteIDs.insert(saved.id)
+        } else {
+            hiddenFavoriteIDs.remove(saved.id)
+        }
+        UserDefaults.standard.set(hiddenFavoriteIDs.map(\.uuidString), forKey: Self.hiddenFavoritesKey)
+    }
+
+    private static let hiddenCategoriesKey = "hiddenCategoryIDs"
+    private static let categoryOrderKey = "categoryOrder"
+    private static let hiddenFavoritesKey = "hiddenFavoriteIDs"
+
     // MARK: Favorites
 
     private static let favoritesKey = "savedSearches"
+    private static let sentKey = "sentReleaseIDs"
+    private static let sentLimit = 500
 
     func favorite(query: String, category: IndexerCategory?) -> SavedSearch? {
         favorites.first { $0.matches(query: query, category: category) }
@@ -140,11 +249,6 @@ final class SearchModel {
             stored?.subcategories = []
             favorites.append(SavedSearch(query: query, category: stored))
         }
-        saveFavorites()
-    }
-
-    func removeFavorites(at offsets: IndexSet) {
-        favorites.remove(atOffsets: offsets)
         saveFavorites()
     }
 
@@ -196,11 +300,14 @@ final class ResultFeed {
     @ObservationIgnored private var total: Int?
     @ObservationIgnored private var lastPageCount = 0
     @ObservationIgnored private var task: Task<Void, Never>?
-    @ObservationIgnored private let onLimits: (APILimits) -> Void
+    /// Each answer from the indexer, with the usage it reported if any.
+    @ObservationIgnored private let onReply: (APILimits?) -> Void
+    @ObservationIgnored private let onFailure: () -> Void
 
-    init(category: IndexerCategory?, onLimits: @escaping (APILimits) -> Void) {
+    init(category: IndexerCategory?, onReply: @escaping (APILimits?) -> Void, onFailure: @escaping () -> Void) {
         self.category = category
-        self.onLimits = onLimits
+        self.onReply = onReply
+        self.onFailure = onFailure
     }
 
     var hasLoaded: Bool { loadedQuery != nil }
@@ -230,11 +337,12 @@ final class ResultFeed {
                 results = page.results
                 total = page.total
                 lastPageCount = page.results.count
-                if let limits = page.apiLimits { onLimits(limits) }
+                onReply(page.apiLimits)
             } catch {
                 guard !Task.isCancelled, !Self.isCancellation(error) else { return }
                 results = []
                 errorMessage = error.localizedDescription
+                onFailure()
             }
             loadedQuery = query
             isLoading = false
@@ -254,10 +362,11 @@ final class ResultFeed {
                 results += page.results.filter { !known.contains($0.id) }
                 total = page.total ?? total
                 lastPageCount = page.results.count
-                if let limits = page.apiLimits { onLimits(limits) }
+                onReply(page.apiLimits)
             } catch {
                 guard !Self.isCancellation(error) else { return }
                 errorMessage = error.localizedDescription
+                onFailure()
             }
         }
     }

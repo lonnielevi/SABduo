@@ -41,12 +41,22 @@ nonisolated struct Queue: Decodable, Equatable, Sendable {
     /// Bytes per second; 0 means unlimited. See `limit_speed` in SABnzbd's downloader.
     var speedLimitBytes: Int
     var slots: [QueueSlot]
+    /// Jobs in the queue, including any past the page of slots fetched.
+    var jobCount: Int
+    /// Warnings SABnzbd has logged since they were last cleared.
+    var warningCount: Int
+    /// The server's load averages, as SABnzbd reports them: "0.52 | 0.48 | 0.45 | V=…".
+    var loadAverage: String
 
     var bytesPerSecond: Double { kbPerSec * 1024 }
 
     private enum CodingKeys: String, CodingKey {
         case paused, status, kbpersec, timeleft, sizeleft, slots
         case speedlimitAbs = "speedlimit_abs"
+        case noofslots
+        case noofslotsTotal = "noofslots_total"
+        case haveWarnings = "have_warnings"
+        case loadavg
     }
 
     init(from decoder: Decoder) throws {
@@ -58,6 +68,24 @@ nonisolated struct Queue: Decodable, Equatable, Sendable {
         sizeLeft = c.lossyString(.sizeleft)
         speedLimitBytes = c.lossyInt(.speedlimitAbs)
         slots = (try? c.decode([QueueSlot].self, forKey: .slots)) ?? []
+        jobCount = max(c.lossyInt(.noofslotsTotal), c.lossyInt(.noofslots), slots.count)
+        warningCount = c.lossyInt(.haveWarnings)
+        loadAverage = c.lossyString(.loadavg)
+    }
+
+    /// `timeLeft` ("1:02:03", or with days "2:01:02:03") in seconds; nil when there's none.
+    var secondsLeft: Int? {
+        let parts = timeLeft.split(separator: ":").compactMap { Int($0) }
+        guard (1...4).contains(parts.count) else { return nil }
+        let total = zip(parts, [86_400, 3600, 60, 1].suffix(parts.count)).map(*).reduce(0, +)
+        return total > 0 ? total : nil
+    }
+
+    /// The 1, 5 and 15 minute load averages, without the extras some versions append.
+    var loadAverages: String? {
+        let values = loadAverage.split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { Double($0) != nil }
+        return values.isEmpty ? nil : values.prefix(3).joined(separator: ", ")
     }
 }
 

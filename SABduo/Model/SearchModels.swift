@@ -55,8 +55,16 @@ nonisolated struct SearchResult: Identifiable, Hashable, Sendable {
     var description: String?
     /// Every `newznab:attr` on the item (size, files, group, poster, imdb, …).
     var attributes: [String: String] = [:]
+    /// When the indexer added it; `published` is when it was posted to Usenet, where known.
+    var indexed: Date? = nil
 
     var grabs: Int? { attributes["grabs"].flatMap(Int.init) }
+    var releaseName: ReleaseName { ReleaseName(title) }
+    /// The title with places to wrap after its dots and underscores: release names have no spaces,
+    /// so they'd otherwise break mid-word.
+    var wrappingTitle: String {
+        title.replacingOccurrences(of: ".", with: ".\u{200B}").replacingOccurrences(of: "_", with: "_\u{200B}")
+    }
     /// The ID `t=details` expects; feeds put it in an attr or as the guid's last path component.
     var newznabID: String { attributes["guid"] ?? URL(string: id)?.lastPathComponent ?? id }
 

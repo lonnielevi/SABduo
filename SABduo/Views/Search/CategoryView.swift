@@ -2,6 +2,7 @@ import SwiftUI
 
 /// A top-level category's subcategories.
 struct CategoryView: View {
+    @Environment(AppStore.self) private var store
     let category: IndexerCategory
 
     var body: some View {
@@ -19,7 +20,7 @@ struct CategoryView: View {
                 }
             }
         }
-        .navigationTitle(category.name)
+        .searchScreenTitle(category.name, subtitle: store.activeIndexer?.name ?? "")
     }
 }
 
@@ -39,21 +40,13 @@ struct BrowseView: View {
                 Section {
                     ResultsList(feed: feed, client: client)
                 } header: {
-                    Text("Results for “\(query)”")
+                    ResultsHeader(query: query, category: category)
                 }
             } else {
                 ResultsList(feed: feed, client: client)
             }
         }
         .overlay { FeedStatus(feed: feed, name: name) }
-        .searchable(text: $feed.query, prompt: "Search \(name)")
-        .searchSuggestions {
-            FavoriteSuggestions(typed: feed.query, category: category) { saved in
-                feed.query = saved.query
-                feed.load(using: client)
-            }
-        }
-        .onSubmit(of: .search) { feed.load(using: client) }
         .onChange(of: feed.query) {
             // Clearing a search goes back to the latest releases in this category.
             if feed.query.isEmpty, feed.loadedQuery?.isEmpty == false { feed.load(using: client) }
@@ -62,12 +55,6 @@ struct BrowseView: View {
         .task {
             if !feed.hasLoaded, !feed.isLoading { feed.load(using: client) }
         }
-        .toolbar {
-            if let query = feed.loadedQuery, !query.isEmpty {
-                ToolbarItem(placement: .topBarTrailing) { FavoriteButton(query: query, category: category) }
-            }
-        }
-        .navigationTitle(category?.name ?? "Latest Releases")
-        .navigationSubtitle(category?.parentName ?? indexer?.name ?? "")
+        .searchScreenTitle(category?.name ?? "Latest Releases", subtitle: category?.parentName ?? indexer?.name ?? "")
     }
 }
