@@ -22,7 +22,9 @@ enum CapsState {
 @Observable
 final class SearchModel {
     private(set) var indexerID: Indexer.ID?
-    var path: [SearchRoute] = []
+    var path: [SearchRoute] = [] {
+        didSet { resetSearches(enteredFrom: oldValue) }
+    }
     /// The search field is open: focused, with the keyboard up.
     var fieldOpen = false
     private(set) var caps: [Indexer.ID: CapsState] = [:]
@@ -112,6 +114,26 @@ final class SearchModel {
             if case .category(let category) = path.last { path.append(.browse(category)) }
         }
         feed.load(using: client)
+    }
+
+    /// A search in a category, typed or a favorite's, lasts while the category is open: going back
+    /// into it after backing out starts from the latest releases again. Reset on the way in, not
+    /// out, so the list doesn't empty while it slides away.
+    private func resetSearches(enteredFrom oldPath: [SearchRoute]) {
+        let wasOpen = Set(oldPath.compactMap { Self.feedKey($0) })
+        for key in Set(path.compactMap { Self.feedKey($0) }).subtracting(wasOpen) {
+            guard let feed = feeds[key], feed.query != "" || feed.loadedQuery?.isEmpty == false else { continue }
+            feed.query = ""
+            feed.clear()
+        }
+    }
+
+    private static func feedKey(_ route: SearchRoute) -> FeedKey? {
+        switch route {
+        case .browse(let category): .category(category?.id)
+        case .category(let category): .category(category.id)
+        case .release: nil
+        }
     }
 
     /// Back to the categories, from any depth or from home-screen results.
@@ -286,10 +308,11 @@ final class SearchModel {
 
     /// Runs a favorite: across everything on the home screen, or inside its category.
     func run(_ saved: SavedSearch, using client: NewznabClient?) {
+        // The path first: opening the category resets its feed, before the favorite's search.
+        path = saved.category.map { [.browse($0)] } ?? []
         let target = saved.category.map { feed(for: $0) } ?? homeFeed
         target.query = saved.query
         target.load(using: client)
-        path = saved.category.map { [.browse($0)] } ?? []
     }
 
     private func saveFavorites() {

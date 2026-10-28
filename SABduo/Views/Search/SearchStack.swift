@@ -6,7 +6,7 @@ struct SearchStack<Header: View>: View {
     @Environment(AppStore.self) private var store
     @Environment(\.isUnfolded) private var isUnfolded
     @Environment(\.usesBottomBar) private var usesBottomBar
-    /// Folded, the download stats, pinned above the home screen and its search field.
+    /// Folded, the download stats, pinned above each search page and its search field.
     @ViewBuilder var header: Header
     /// How far the side rail insets the pages. Unfolded it insets the navigation but not what
     /// floats over it, so the field takes the inset from here.
@@ -14,9 +14,10 @@ struct SearchStack<Header: View>: View {
 
     var body: some View {
         // Outside the navigation, so it stays put as the page scrolls, with the page's search
-        // field beneath it. On the home screen only, as on the other pages.
+        // field beneath it. On every search page: added and removed, it resized the navigation
+        // mid-slide, and going back jumped.
         VStack(spacing: 0) {
-            if Header.self != EmptyView.self, store.search.path.isEmpty {
+            if Header.self != EmptyView.self {
                 header
                     // Level with the other pages' stats, which sit beneath their empty navigation bar,
                     // and the field beneath level with their first card.

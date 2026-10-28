@@ -101,8 +101,8 @@ struct QueueStatsCard: View {
     static let height: CGFloat = 41
 
     var body: some View {
-        // Only while there's something to download; an empty queue says so itself.
-        if let queue = store.queue, queue.jobCount > 0 {
+        // Once SABnzbd has answered; with nothing to download, it's the app's name.
+        if store.queue != nil {
             QueueSummary(showsServerLight: showsServerLight)
                 // In line with the cards' edges, as a large title is.
                 .padding(.horizontal, 4)
@@ -120,11 +120,16 @@ struct QueueSummary: View {
 
     var body: some View {
         let queue = store.queue
+        // With nothing downloading, the app's name stands in for a speed of nothing.
+        let isIdle = queue.map { !$0.paused && $0.bytesPerSecond == 0 } ?? false
+        let isEmpty = (queue?.jobCount ?? 0) == 0
         VStack(alignment: .leading, spacing: 0) {
             Button {
+                // Plain, not disabled, so the name isn't dimmed.
+                guard !isIdle else { return }
                 withAnimation(.snappy) { unit = unit.next }
             } label: {
-                Text(queue.map { $0.paused ? "Paused" : unit.format($0.bytesPerSecond) } ?? "–")
+                Text(isIdle ? "SABduo" : queue.map { $0.paused ? "Paused" : unit.format($0.bytesPerSecond) } ?? "–")
                     .font(.largeTitle.bold())
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
@@ -133,10 +138,21 @@ struct QueueSummary: View {
                     .contentShape(.rect)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Speed")
-            .accessibilityHint("Shows the speed in \(unit.next.name.lowercased())")
+            .accessibilityLabel(isIdle ? "SABduo" : "Speed")
+            .accessibilityHint(isIdle ? "" : "Shows the speed in \(unit.next.name.lowercased())")
 
-            QueueDetailsLine(showsServerLight: showsServerLight)
+            if isEmpty {
+                // An empty queue says so itself; beneath the name, the server it's from.
+                HStack(spacing: 6) {
+                    Text(store.config.normalizedHost)
+                    if showsServerLight { ServerConnectionLight() }
+                }
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            } else {
+                QueueDetailsLine(showsServerLight: showsServerLight)
+            }
         }
         .monospacedDigit()
         .frame(maxWidth: .infinity, alignment: .leading)
