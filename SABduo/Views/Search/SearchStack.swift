@@ -26,6 +26,22 @@ struct SearchStack<Header: View>: View {
             }
             navigation
         }
+        // Unfolded in portrait, with no rail, expand floats at the foot of the pane, centred, as
+        // tall as the tab bar beside it and level with it. In the navigation bar, a Live Activity
+        // that pushes the status bar into the pane's row makes iOS fold it into an overflow menu.
+        .overlay(alignment: .bottom) {
+            if usesBottomBar {
+                SearchFullScreenButton()
+                    .labelStyle(.iconOnly)
+                    // A touch under the tab bar's icons: corner to corner, the arrows look larger.
+                    .font(.system(size: 21, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .frame(width: 62, height: 62)
+                    .glassEffect(.regular.interactive(), in: .circle)
+                    .padding(.bottom, 21)
+                    .ignoresSafeArea(edges: .bottom)
+            }
+        }
     }
 
     private var navigation: some View {
@@ -120,10 +136,6 @@ private struct SearchButtons: ToolbarContent {
         // go back from, so they get a back button of their own.
         if store.search.path.isEmpty, !store.search.isHome {
             ToolbarItem(placement: .topBarLeading) { SearchResultsBackButton() }
-        }
-        // Unfolded in portrait, with no rail, expand goes at the top, after any back button.
-        if usesBottomBar {
-            ToolbarItem(placement: .topBarLeading) { SearchFullScreenButton() }
         }
         // The side rail, unfolded in landscape.
         if isUnfolded, !usesBottomBar {
