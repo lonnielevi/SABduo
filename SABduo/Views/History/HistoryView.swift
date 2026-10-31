@@ -7,30 +7,35 @@ struct HistoryView: View {
     var body: some View {
         List {
             ForEach(store.history) { item in
-                HistoryRow(item: item)
-                    .listRowBackground(rowFill)
-                    // Swipe left only, clear of the back gesture; the gentler action at the edge.
-                    .swipeActions(allowsFullSwipe: false) {
-                        if item.canRetry {
-                            Button("Retry", systemImage: "arrow.clockwise") {
-                                Task { await store.retry(item) }
-                            }
-                            .tint(.blue)
+                Button {
+                    store.selectedHistoryID = item.id
+                } label: {
+                    HistoryRow(item: item)
+                }
+                .foregroundStyle(.primary)
+                .listRowBackground(rowFill)
+                // Swipe left only, clear of the back gesture; the gentler action at the edge.
+                .swipeActions(allowsFullSwipe: false) {
+                    if item.canRetry {
+                        Button("Retry", systemImage: "arrow.clockwise") {
+                            Task { await store.retry(item) }
                         }
-                        Button("Remove", systemImage: "trash", role: .destructive) {
-                            Task { await store.remove(item) }
+                        .tint(.blue)
+                    }
+                    Button("Remove", systemImage: "trash", role: .destructive) {
+                        Task { await store.remove(item) }
+                    }
+                }
+                .contextMenu {
+                    if item.canRetry {
+                        Button("Retry", systemImage: "arrow.clockwise") {
+                            Task { await store.retry(item) }
                         }
                     }
-                    .contextMenu {
-                        if item.canRetry {
-                            Button("Retry", systemImage: "arrow.clockwise") {
-                                Task { await store.retry(item) }
-                            }
-                        }
-                        Button("Remove from History", systemImage: "trash", role: .destructive) {
-                            Task { await store.remove(item) }
-                        }
+                    Button("Remove from History", systemImage: "trash", role: .destructive) {
+                        Task { await store.remove(item) }
                     }
+                }
             }
         }
         .opacity(store.isOffline ? 0 : 1)
@@ -45,6 +50,10 @@ struct HistoryView: View {
         .refreshable { await store.refresh() }
         .navigationTitle("History")
         .listsToolbar()
+        .navigationDestination(item: Bindable(store).selectedHistoryID) { id in
+            HistoryDetailView(itemID: id)
+                .railGap()
+        }
     }
 }
 

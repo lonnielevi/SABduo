@@ -142,10 +142,11 @@ struct QueueSummary: View {
             .accessibilityHint(isIdle ? "" : "Shows the speed in \(unit.next.name.lowercased())")
 
             if isEmpty {
-                // An empty queue says so itself; beneath the name, the server it's from.
+                // An empty queue says so itself; beneath the name, the server it's from, its light
+                // leading.
                 HStack(spacing: 6) {
-                    Text(store.config.normalizedHost)
                     if showsServerLight { ServerConnectionLight() }
+                    Text(store.config.normalizedHost)
                 }
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -161,7 +162,7 @@ struct QueueSummary: View {
 }
 
 
-/// Beneath the speed: "53.6 GB left · 6 jobs · 1h 16m", any limit, and the server's light, a
+/// Beneath the speed: the server's light, then "53.6 GB left · 6 jobs · 1h 16m" and any limit, a
 /// size smaller when it won't fit. Tapping the time swaps the countdown for when it'll finish.
 struct QueueDetailsLine: View {
     @Environment(AppStore.self) private var store
@@ -178,9 +179,10 @@ struct QueueDetailsLine: View {
         .monospacedDigit()
     }
 
-    /// "53.6 GB left · 6 jobs · 1h 16m", and the server's light.
+    /// The server's light, then "53.6 GB left · 6 jobs · 1h 16m".
     private func details(_ queue: Queue?) -> some View {
         HStack(spacing: 6) {
+            if showsServerLight { ServerConnectionLight() }
             Text(queue.map { $0.sizeLeft.isEmpty ? "Nothing left" : "\($0.sizeLeft) left" } ?? "–")
             Text("·")
             Text(queue.map { $0.jobCount == 1 ? "1 job" : "\($0.jobCount) jobs" } ?? "–")
@@ -198,7 +200,6 @@ struct QueueDetailsLine: View {
                 Text("·")
                 Text("Limit \(unit.format(Double(limit)))")
             }
-            if showsServerLight { ServerConnectionLight() }
         }
         .lineLimit(1)
         .fixedSize()

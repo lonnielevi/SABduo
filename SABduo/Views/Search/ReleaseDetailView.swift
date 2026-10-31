@@ -207,6 +207,8 @@ struct ReleaseDetailView: View {
         // No title: the poster and release name lead the page, right under the buttons.
         .navigationBarTitleDisplayMode(.inline)
         .contentMargins(.top, 8, for: .scrollContent)
+        // Unfolded in portrait, its back button, which has no room in the bar.
+        .searchScreenTitle("")
         .task(id: release.id) { await loadDetails() }
         .sheet(isPresented: $showingNFO) {
             NFOSheet(release: release)

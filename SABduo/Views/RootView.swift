@@ -21,7 +21,15 @@ struct RootView: View {
             let unfolded = isUnfolded(width: proxy.size.width)
             Group {
                 if unfolded {
-                    SplitLayout(isBook: hinge == .book)
+                    // The size from here, which every rotation changes, and which the keyboard
+                    // doesn't shorten: a reader in the split can miss a rotation, keeping the
+                    // layout it launched with. The split runs edge to edge, across the side rail.
+                    let insets = proxy.safeAreaInsets
+                    SplitLayout(isBook: hinge == .book,
+                                isLandscape: proxy.size.width > proxy.size.height,
+                                width: proxy.size.width + insets.leading + insets.trailing,
+                                sideInsets: EdgeInsets(top: 0, leading: insets.leading, bottom: 0, trailing: insets.trailing),
+                                topInset: insets.top)
                 } else {
                     // Unfolded, the split puts it in the list pane.
                     CompactLayout().statusBanner()

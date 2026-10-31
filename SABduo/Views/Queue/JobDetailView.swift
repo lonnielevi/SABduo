@@ -85,13 +85,7 @@ struct JobDetailView: View {
         .navigationTitle("Job")
         .navigationBarTitleDisplayMode(.inline)
         // The job's name heads the page already; the title stays for the back button and VoiceOver.
+        // The bar has back alone: the job's actions are in the queue row's menu.
         .toolbar(removing: .title)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu("Actions", systemImage: "ellipsis") {
-                    JobMenu(job: job)
-                }
-            }
-        }
     }
 }

@@ -22,13 +22,15 @@ final class AppStore {
     var notice: String?
     /// Job shown in the detail pane (unfolded) or pushed (folded).
     var selectedJobID: QueueSlot.ID?
-    /// Which page the leading side shows when unfolded; also the tab to land on when folding.
+    /// The history item open over the history list.
+    var selectedHistoryID: HistorySlot.ID?
+    /// Which page the list pane shows when unfolded; also the tab to land on when folding.
     var listPane: ListPane = .queue {
         didSet { listPaneMovedForward = ListPane.allCases.firstIndex(of: listPane)! > ListPane.allCases.firstIndex(of: oldValue)! }
     }
-    /// Which way the leading side last moved through its pages, so the new page slides in from that side.
+    /// Which way the list pane last moved through its pages, so the new page slides in from that side.
     private(set) var listPaneMovedForward = true
-    /// Unfolded, search can take the whole screen; the split comes back when this is cleared.
+    /// Unfolded in portrait, search can take the whole screen; the split comes back when this is cleared.
     var searchFullScreen = false
     /// Chosen from search's "No Indexer" screen, for using the app without an indexer.
     var hidesSearch = UserDefaults.standard.bool(forKey: AppStore.hidesSearchKey) {
@@ -59,7 +61,10 @@ final class AppStore {
         let savedIndexers = Indexer.loadAll()
         indexers = savedIndexers
         indexerKeys = Dictionary(uniqueKeysWithValues: savedIndexers.map { ($0.id, Keychain.string(for: $0.keychainAccount) ?? "") })
-        search.selectIndexer(savedIndexers.first?.id)
+        // The indexer picked last time, if it's still there.
+        if !savedIndexers.contains(where: { $0.id == search.indexerID }) {
+            search.selectIndexer(savedIndexers.first?.id)
+        }
         #if DEBUG
         // Point a simulator run at a server without typing it in:
         // SIMCTL_CHILD_SABDUO_HOST=127.0.0.1 SIMCTL_CHILD_SABDUO_API_KEY=… xcrun simctl launch …
@@ -115,6 +120,7 @@ final class AppStore {
         queue = nil
         history = []
         selectedJobID = nil
+        selectedHistoryID = nil
         errorMessage = nil
         isConnected = nil
         connectionError = nil
@@ -193,6 +199,9 @@ final class AppStore {
             isConnected = true
             connectionError = nil
             if let selectedJobID, job(selectedJobID) == nil { self.selectedJobID = nil }
+            if let selectedHistoryID, !history.contains(where: { $0.id == selectedHistoryID }) {
+                self.selectedHistoryID = nil
+            }
         } catch {
             guard !Self.isCancellation(error), started == generation else { return }
             isConnected = false

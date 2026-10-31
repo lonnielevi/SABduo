@@ -10,7 +10,7 @@ private struct ListsToolbar: ViewModifier {
         // The page picker or tab bar stands in for the title.
         let content = content.navigationBarTitleDisplayMode(.inline).toolbar(removing: .title)
         if usesBottomBar || isUnfolded {
-            // In the tab bar's accessory, or the search pane's rail, which runs down the trailing pane.
+            // In the tab bar's accessory, or the side rail, which runs down the list pane.
             content
         } else {
             content.toolbar { ListsRailItems() }
@@ -49,23 +49,19 @@ struct ListsAccessory: View {
 }
 
 /// The pages' controls in the side rail, in landscape or folded. Unfolded, the rail runs down the
-/// trailing pane, so they go there beside its own, and stay while search fills the display: the
-/// queue's still work then. Settings' don't, with its form slid away. Folded, Settings puts its
-/// own in the rail.
+/// list pane, so they go in its toolbar. Folded, Settings puts its own in the rail.
 struct ListsRailItems: ToolbarContent {
     @Environment(AppStore.self) private var store
     @Environment(\.rootActions) private var actions
     @Environment(\.usesBottomBar) private var usesBottomBar
 
     var body: some ToolbarContent {
-        if !usesBottomBar, store.listPane == .settings, let controls = store.settingsControls,
-           !store.searchFullScreen || store.selectedJobID != nil {
+        if !usesBottomBar, store.listPane == .settings, let controls = store.settingsControls {
             ToolbarSpacer(.fixed, placement: .topBarTrailing)
             ToolbarItemGroup(placement: .topBarTrailing) {
                 SettingsButtons(controls: controls)
             }
         } else if !usesBottomBar, store.listPane != .settings {
-            // Their own group, apart from the trailing pane's buttons above them.
             ToolbarSpacer(.fixed, placement: .topBarTrailing)
             if store.listPane == .queue {
                 ToolbarItem(placement: .topBarTrailing) { ClearQueueButton() }
@@ -101,7 +97,7 @@ enum Page: Hashable {
         }
     }
 
-    /// The leading pane's page this is, when unfolded; search has a pane of its own there.
+    /// The list pane's page this is, when unfolded; search has a pane of its own there.
     var listPane: ListPane? {
         switch self {
         case .search: nil
@@ -113,9 +109,10 @@ enum Page: Hashable {
 
     var systemImage: String {
         switch self {
-        case .search: "magnifyingglass"
+        // Not the magnifying glass: that's the search field's, which folded joins the tab in the rail.
+        case .search: "binoculars"
         case .queue: "tray.and.arrow.down"
-        case .history: "clock"
+        case .history: "clock.arrow.circlepath"
         case .settings: "gear"
         }
     }

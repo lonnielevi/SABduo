@@ -12,6 +12,8 @@ extension EnvironmentValues {
     /// Room kept clear at the bottom of a pane for what floats over it, such as search's field,
     /// which an empty pane's message stays above.
     @Entry var floatingBottomInset: CGFloat = 0
+    /// Room a page adds beside the side rail, past its safe area, which the rail's buttons overhang.
+    @Entry var railGap: CGFloat = 0
 }
 
 extension View {
@@ -19,6 +21,32 @@ extension View {
     /// and meeting the rail's inset on the trailing one, which already spaces them from the rail.
     func railPageMargins() -> some View {
         padding(.leading, 20)
+    }
+}
+
+extension View {
+    /// Keeps a page's cards as far from the rail's buttons as `railGap` asks. On each page: a
+    /// navigation stack doesn't pass margins on to its pages. As a margin past the rail's inset
+    /// rather than more safe area, so the list still runs under the rail, its scroll bar at the
+    /// screen's edge.
+    func railGap() -> some View {
+        modifier(RailGap())
+    }
+}
+
+private struct RailGap: ViewModifier {
+    @Environment(\.railGap) private var gap
+    @State private var inset: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        if gap == 0 {
+            content
+        } else {
+            content
+                .contentMargins(.trailing, inset + gap, for: .scrollContent)
+                .ignoresSafeArea(.container, edges: .trailing)
+                .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.trailing } action: { inset = $0 }
+        }
     }
 }
 

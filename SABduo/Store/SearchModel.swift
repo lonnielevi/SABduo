@@ -21,7 +21,8 @@ enum CapsState {
 /// the layout swap on fold/unfold.
 @Observable
 final class SearchModel {
-    private(set) var indexerID: Indexer.ID?
+    /// The indexer picked on the search home screen, kept across launches.
+    private(set) var indexerID: Indexer.ID? = UserDefaults.standard.string(forKey: SearchModel.indexerKey).flatMap(UUID.init)
     var path: [SearchRoute] = [] {
         didSet { resetSearches(enteredFrom: oldValue) }
     }
@@ -36,12 +37,24 @@ final class SearchModel {
     private(set) var sentIDs: Set<SearchResult.ID> = Set(UserDefaults.standard.stringArray(forKey: SearchModel.sentKey) ?? [])
     /// Shared across indexers: Newznab category IDs are largely standard.
     private(set) var favorites: [SavedSearch] = SearchModel.loadFavorites()
-    /// Top-level categories left off the search home screen, and the order the rest go in. Shared
-    /// across indexers, like favorites.
-    private(set) var hiddenCategoryIDs: Set<Int> = Set(UserDefaults.standard.array(forKey: SearchModel.hiddenCategoriesKey) as? [Int] ?? [])
+    /// Top-level categories left off the search home screen, for each indexer: one may have
+    /// nothing worth seeing in a category another does.
+    var hiddenCategoryIDs: Set<Int> {
+        indexerID.flatMap { hiddenCategories[$0] } ?? legacyHiddenCategories
+    }
+    private var hiddenCategories: [Indexer.ID: Set<Int>] = SearchModel.loadHidden(SearchModel.hiddenCategoriesByIndexerKey) { $0 as? Int }
+    /// From before they were per indexer: what an indexer hides until it's given its own list.
+    private let legacyHiddenCategories = Set(UserDefaults.standard.array(forKey: SearchModel.hiddenCategoriesKey) as? [Int] ?? [])
+    /// The order the categories go in, shared across indexers.
     private var categoryOrder: [Int] = UserDefaults.standard.array(forKey: SearchModel.categoryOrderKey) as? [Int] ?? []
-    /// Favorites left off the search home screen.
-    private(set) var hiddenFavoriteIDs: Set<SavedSearch.ID> = Set((UserDefaults.standard.stringArray(forKey: SearchModel.hiddenFavoritesKey) ?? []).compactMap(UUID.init))
+    /// Favorites left off the search home screen, for each indexer: the favorites are shared, but
+    /// one may suit an indexer and not another.
+    var hiddenFavoriteIDs: Set<SavedSearch.ID> {
+        indexerID.flatMap { hiddenFavorites[$0] } ?? legacyHiddenFavorites
+    }
+    private var hiddenFavorites: [Indexer.ID: Set<SavedSearch.ID>] = SearchModel.loadHidden(SearchModel.hiddenFavoritesByIndexerKey) { ($0 as? String).flatMap(UUID.init) }
+    /// From before they were per indexer: what an indexer hides until it's given its own list.
+    private let legacyHiddenFavorites = Set((UserDefaults.standard.stringArray(forKey: SearchModel.hiddenFavoritesKey) ?? []).compactMap(UUID.init))
 
     /// Created lazily while views render, so not observed; `indexerID` changes cover invalidation.
     @ObservationIgnored private var capsTasks: [Indexer.ID: Task<Void, Never>] = [:]
@@ -152,6 +165,7 @@ final class SearchModel {
         feeds = [:]
         path = []
         indexerID = id
+        UserDefaults.standard.set(id?.uuidString, forKey: Self.indexerKey)
     }
 
     /// After an indexer's settings change, drop what was fetched with the old ones.
@@ -239,22 +253,42 @@ final class SearchModel {
         return loadedCaps(for: indexer.id)?.siteURL ?? indexer.apiURL?.deletingLastPathComponent()
     }
 
+    /// Hides or shows a category for the current indexer only.
     func setCategory(_ category: IndexerCategory, hidden: Bool) {
+        guard let indexerID else { return }
+        var ids = hiddenCategoryIDs
         if hidden {
-            hiddenCategoryIDs.insert(category.id)
+            ids.insert(category.id)
         } else {
-            hiddenCategoryIDs.remove(category.id)
+            ids.remove(category.id)
         }
-        UserDefaults.standard.set(Array(hiddenCategoryIDs), forKey: Self.hiddenCategoriesKey)
+        hiddenCategories[indexerID] = ids
+        Self.saveHidden(hiddenCategories, Self.hiddenCategoriesByIndexerKey) { $0 }
     }
 
+    /// Hides or shows a favorite for the current indexer only.
     func setFavorite(_ saved: SavedSearch, hidden: Bool) {
+        guard let indexerID else { return }
+        var ids = hiddenFavoriteIDs
         if hidden {
-            hiddenFavoriteIDs.insert(saved.id)
+            ids.insert(saved.id)
         } else {
-            hiddenFavoriteIDs.remove(saved.id)
+            ids.remove(saved.id)
         }
-        UserDefaults.standard.set(hiddenFavoriteIDs.map(\.uuidString), forKey: Self.hiddenFavoritesKey)
+        hiddenFavorites[indexerID] = ids
+        Self.saveHidden(hiddenFavorites, Self.hiddenFavoritesByIndexerKey) { $0.uuidString }
+    }
+
+    /// Hidden items by indexer, stored as a dictionary keyed by the indexer's ID.
+    private static func loadHidden<Item: Hashable>(_ key: String, _ item: (Any) -> Item?) -> [Indexer.ID: Set<Item>] {
+        let stored = UserDefaults.standard.dictionary(forKey: key) as? [String: [Any]] ?? [:]
+        return Dictionary(uniqueKeysWithValues: stored.compactMap { indexer, items in
+            UUID(uuidString: indexer).map { ($0, Set(items.compactMap(item))) }
+        })
+    }
+
+    private static func saveHidden<Item>(_ hidden: [Indexer.ID: Set<Item>], _ key: String, _ stored: (Item) -> Any) {
+        UserDefaults.standard.set(Dictionary(uniqueKeysWithValues: hidden.map { ($0.key.uuidString, $0.value.map(stored)) }), forKey: key)
     }
 
     /// Moves within the shown items, then puts them back in the slots they held among all of them.
@@ -265,9 +299,12 @@ final class SearchModel {
         return all.map { shown.contains($0) ? next.next()! : $0 }
     }
 
+    private static let indexerKey = "searchIndexerID"
     private static let hiddenCategoriesKey = "hiddenCategoryIDs"
+    private static let hiddenCategoriesByIndexerKey = "hiddenCategoryIDsByIndexer"
     private static let categoryOrderKey = "categoryOrder"
     private static let hiddenFavoritesKey = "hiddenFavoriteIDs"
+    private static let hiddenFavoritesByIndexerKey = "hiddenFavoriteIDsByIndexer"
 
     // MARK: Favorites
 

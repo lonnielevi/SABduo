@@ -12,6 +12,9 @@ struct ServerSettingsView: View {
     /// The server fields are locked until the lock is tapped, so a stray tap can't change them.
     /// Saving locks them again.
     @State private var isUnlocked = false
+    /// The side rail's inset, which the form runs under.
+    @State private var trailingInset: CGFloat = 0
+    @Environment(\.railGap) private var railGap
     @AppStorage(SpeedUnit.storageKey) private var speedUnit: SpeedUnit = .megabytes
     @AppStorage(TimeLeftStyle.storageKey) private var timeStyle: TimeLeftStyle = .countdown
     @AppStorage(Appearance.storageKey) private var appearance: Appearance = .system
@@ -21,12 +24,17 @@ struct ServerSettingsView: View {
         case idle, testing, success, failure(String)
     }
 
-    /// A page: of the leading pane unfolded, beside Queue and History; a tab folded.
+    /// A page: of the list pane unfolded, beside Queue and History; a tab folded.
     var body: some View {
         form
-            // A form this narrow gets narrower margins than the lists beside it, and ignores
-            // content and section margins; widen its safe area to match them.
-            .safeAreaPadding(.horizontal, 3)
+            // A form this narrow gets narrower margins than the lists beside it; widen them to
+            // match. On the trailing side, under the side rail as a list runs, so the scroll bar
+            // is at the screen's edge like theirs, with the rows kept clear of the rail by as
+            // much as theirs are.
+            .safeAreaPadding(.leading, 3)
+            .contentMargins(.trailing, trailingInset + railGap + 3, for: .scrollContent)
+            .ignoresSafeArea(.container, edges: .trailing)
+            .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.trailing } action: { trailingInset = $0 }
             // Folded, in the side rail with the other pages' buttons. Unfolded in portrait, above
             // the tab bar with them; in landscape, in the rail below search's.
             .toolbar {
@@ -95,9 +103,6 @@ struct ServerSettingsView: View {
             }
             .listRowBackground(rowFill)
         }
-        // The first section's header brings its own space above it; take it back, so "Status"
-        // starts level with the first card on the other pages.
-        .contentMargins(.top, -6, for: .scrollContent)
         .onChange(of: draftConfig) { testState = .idle }
         .onChange(of: apiKey) { testState = .idle }
     }
@@ -137,8 +142,6 @@ struct ServerSettingsView: View {
                 }
             }
             .disabled(!canSave || testState == .testing)
-        } header: {
-            Text("Status")
         } footer: {
             if store.queue?.loadAverages != nil {
                 Text("System load is averaged over 1, 5 and 15 minutes.")
@@ -201,14 +204,6 @@ struct ServerSettingsView: View {
 
     private var indexers: some View {
         Section {
-            if store.indexers.count > 1 {
-                Picker("Search With", selection: Binding(
-                    get: { store.activeIndexer?.id },
-                    set: { store.search.selectIndexer($0) }
-                )) {
-                    ForEach(store.indexers) { Text($0.name).tag(Optional($0.id)) }
-                }
-            }
             ForEach(store.indexers) { indexer in
                 NavigationLink {
                     IndexerInfoView(indexerID: indexer.id)
